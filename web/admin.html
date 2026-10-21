@@ -26,6 +26,7 @@
       <button data-panel="consumers">调用方</button>
       <button data-panel="keys">API Key</button>
       <button data-panel="sessions">语音会话</button>
+      <button data-panel="models">模型配置</button>
       <button data-panel="usage">用量</button>
     </nav>
     <section data-panel="portals">
@@ -46,6 +47,28 @@
       <div id="keys"></div>
     </section>
     <section data-panel="sessions" hidden><div id="sessions"></div></section>
+    <section data-panel="models" hidden>
+      <form id="model-form">
+        <input name="name" placeholder="名称" required />
+        <select name="kind"><option value="llm">LLM</option><option value="stt">STT</option><option value="tts">TTS</option></select>
+        <select name="protocol"><option value="livekit_inference">LiveKit Inference</option><option value="livekit_realtime">LiveKit Realtime</option><option value="openai_chat">OpenAI Chat</option><option value="openai_stt">OpenAI STT</option><option value="openai_tts">OpenAI TTS</option><option value="openai_realtime">OpenAI Realtime</option><option value="whisper_local">本地 Whisper</option><option value="piper_local">本地 Piper</option></select>
+        <input name="base_url" placeholder="API 地址" />
+        <input name="api_key" placeholder="API Key" />
+        <input name="api_secret" placeholder="API Secret（LiveKit Inference 需要）" />
+        <input name="model" placeholder="模型名" required />
+        <input name="voice" placeholder="音色或本地模型路径" />
+        <label><input name="is_default" type="checkbox" /> 设为默认</label>
+        <button>保存配置</button>
+      </form>
+      <form id="credential-form">
+        <input name="config_id" placeholder="配置 ID" required />
+        <input name="base_url" placeholder="覆盖 API 地址，可空" />
+        <input name="api_key" placeholder="写入 API Key" />
+        <input name="api_secret" placeholder="写入 API Secret" />
+        <button>保存密钥</button>
+      </form>
+      <div id="models"></div>
+    </section>
     <section data-panel="usage" hidden><div id="usage"></div></section>
   </div>
   <script src="/console.js"></script>
@@ -68,6 +91,16 @@
       if (panel === "consumers") consumers.innerHTML = table([["ID", r => r.consumer_id], ["名称", r => r.name], ["开发者", r => r.developer_id]], await api("/api/v1/consumers"));
       if (panel === "keys") keys.innerHTML = table([["Key ID", r => r.api_key_id], ["调用方", r => r.consumer_id], ["租户", r => r.tenant_id], ["已用微美元", r => r.quota_used_usd_micros]], await api("/api/v1/api-keys"));
       if (panel === "sessions") sessions.innerHTML = table([["会话", r => r.session_id], ["房间", r => r.room_name], ["模式", r => r.voice_mode], ["模型", r => r.llm_model], ["状态", r => r.state]], await api("/api/v1/voice/sessions"));
+      if (panel === "models") {
+        const rows = await api("/api/v1/model-configs");
+        models.innerHTML = table([
+          ["名称", r => r.name], ["类型", r => r.kind], ["协议", r => r.protocol], ["模型", r => r.model],
+          ["地址", r => r.base_url], ["密钥", r => r.api_key_hint], ["Secret", r => r.has_api_secret ? "已设置" : ""], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status],
+          ["操作", r => r.status === "ACTIVE" ? `<button data-default="${r.config_id}">默认</button> <button data-disable="${r.config_id}">停用</button>` : ""]
+        ], rows);
+        models.querySelectorAll("[data-default]").forEach((button) => button.onclick = async () => { await api("/api/v1/model-configs/" + button.dataset.default + "/default", { method: "POST" }); load("models"); });
+        models.querySelectorAll("[data-disable]").forEach((button) => button.onclick = async () => { await api("/api/v1/model-configs/" + button.dataset.disable + "/disable", { method: "POST" }); load("models"); });
+      }
       if (panel === "usage") {
         const data = await api("/api/v1/usage/summary?tenant_id=tenant_ugreen_01");
         usage.innerHTML = "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
@@ -77,6 +110,20 @@
     document.getElementById("product-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/products", { method: "POST", body: JSON.stringify({ name: form.name.value, product_type: form.product_type.value }) }); load("products"); };
     document.getElementById("consumer-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/consumers", { method: "POST", body: JSON.stringify({ name: form.name.value, developer_id: form.developer_id.value || "tenant_ugreen_01" }) }); load("consumers"); };
     document.getElementById("key-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; const created = await api("/api/v1/api-keys", { method: "POST", body: JSON.stringify({ consumer_id: form.consumer_id.value }) }); document.getElementById("new-key").textContent = "新密钥只显示一次：" + created.raw_key; load("keys"); };
+    document.getElementById("model-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      await api("/api/v1/model-configs", { method: "POST", body: JSON.stringify({ name: form.name.value, kind: form.kind.value, protocol: form.protocol.value, base_url: form.base_url.value, api_key: form.api_key.value, api_secret: form.api_secret.value, model: form.model.value, voice: form.voice.value, is_default: form.is_default.checked }) });
+      form.reset();
+      load("models");
+    };
+    document.getElementById("credential-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      await api("/api/v1/model-configs/" + form.config_id.value + "/credentials", { method: "POST", body: JSON.stringify({ base_url: form.base_url.value, api_key: form.api_key.value, api_secret: form.api_secret.value }) });
+      form.reset();
+      load("models");
+    };
     if (localStorage.getItem(tokenKey)) api("/api/v1/auth/me").then(enter).catch(() => localStorage.removeItem(tokenKey));
   </script>
 </body>

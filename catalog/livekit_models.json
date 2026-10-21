@@ -1,0 +1,1222 @@
+[
+  {
+    "config_id": "lk-llm-livekit_inference-deepseek-ai-deepseek-v3",
+    "name": "deepseek-ai/deepseek-v3",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepseek-ai/deepseek-v3",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-deepseek-ai-deepseek-v3-2",
+    "name": "deepseek-ai/deepseek-v3.2",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepseek-ai/deepseek-v3.2",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-2-5-flash",
+    "name": "google/gemini-2.5-flash",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-2.5-flash",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-2-5-flash-lite",
+    "name": "google/gemini-2.5-flash-lite",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-2.5-flash-lite",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-2-5-pro",
+    "name": "google/gemini-2.5-pro",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-2.5-pro",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-3-flash",
+    "name": "google/gemini-3-flash",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-3-flash",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-3-1-flash-lite",
+    "name": "google/gemini-3.1-flash-lite",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-3.1-flash-lite",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-3-1-pro",
+    "name": "google/gemini-3.1-pro",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-3.1-pro",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-google-gemini-3-5-flash",
+    "name": "google/gemini-3.5-flash",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-3.5-flash",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-moonshotai-kimi-k2-5",
+    "name": "moonshotai/kimi-k2.5",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "moonshotai/kimi-k2.5",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-moonshotai-kimi-k2-6",
+    "name": "moonshotai/kimi-k2.6",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "moonshotai/kimi-k2.6",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-chat-latest",
+    "name": "openai/chat-latest",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/chat-latest",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-4-1",
+    "name": "openai/gpt-4.1",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-4.1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-4-1-mini",
+    "name": "openai/gpt-4.1-mini",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-4.1-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-4-1-nano",
+    "name": "openai/gpt-4.1-nano",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-4.1-nano",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-4o",
+    "name": "openai/gpt-4o",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-4o",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-4o-mini",
+    "name": "openai/gpt-4o-mini",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-4o-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5",
+    "name": "openai/gpt-5",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-mini",
+    "name": "openai/gpt-5-mini",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-nano",
+    "name": "openai/gpt-5-nano",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5-nano",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-1",
+    "name": "openai/gpt-5.1",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-1-chat-latest",
+    "name": "openai/gpt-5.1-chat-latest",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.1-chat-latest",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-2",
+    "name": "openai/gpt-5.2",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.2",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-2-chat-latest",
+    "name": "openai/gpt-5.2-chat-latest",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.2-chat-latest",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-3-chat-latest",
+    "name": "openai/gpt-5.3-chat-latest",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.3-chat-latest",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-4",
+    "name": "openai/gpt-5.4",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.4",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-4-mini",
+    "name": "openai/gpt-5.4-mini",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.4-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-4-nano",
+    "name": "openai/gpt-5.4-nano",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.4-nano",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-5",
+    "name": "openai/gpt-5.5",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.5",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-6-luna",
+    "name": "openai/gpt-5.6-luna",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.6-luna",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-6-sol",
+    "name": "openai/gpt-5.6-sol",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.6-sol",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-5-6-terra",
+    "name": "openai/gpt-5.6-terra",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-5.6-terra",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-openai-gpt-oss-120b",
+    "name": "openai/gpt-oss-120b",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-oss-120b",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-1-fast-non-reasoning",
+    "name": "xai/grok-4-1-fast-non-reasoning",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4-1-fast-non-reasoning",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-1-fast-reasoning",
+    "name": "xai/grok-4-1-fast-reasoning",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4-1-fast-reasoning",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-20-0309-non-reasoning",
+    "name": "xai/grok-4.20-0309-non-reasoning",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4.20-0309-non-reasoning",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-20-0309-reasoning",
+    "name": "xai/grok-4.20-0309-reasoning",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4.20-0309-reasoning",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-20-multi-agent-0309",
+    "name": "xai/grok-4.20-multi-agent-0309",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4.20-multi-agent-0309",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-3",
+    "name": "xai/grok-4.3",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4.3",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-xai-grok-4-5",
+    "name": "xai/grok-4.5",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-4.5",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-livekit_inference-zai-glm-5-1",
+    "name": "zai/glm-5.1",
+    "kind": "llm",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "zai/glm-5.1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-assemblyai-u3-rt-pro",
+    "name": "assemblyai/u3-rt-pro",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "assemblyai/u3-rt-pro",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-assemblyai-universal-3-5-pro",
+    "name": "assemblyai/universal-3-5-pro",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "assemblyai/universal-3-5-pro",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-assemblyai-universal-3-6-pro",
+    "name": "assemblyai/universal-3-6-pro",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "assemblyai/universal-3-6-pro",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-assemblyai-universal-streaming",
+    "name": "assemblyai/universal-streaming",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "assemblyai/universal-streaming",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-assemblyai-universal-streaming-multilingual",
+    "name": "assemblyai/universal-streaming-multilingual",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "assemblyai/universal-streaming-multilingual",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-auto",
+    "name": "auto",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "auto",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-cartesia-ink-2",
+    "name": "cartesia/ink-2",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/ink-2",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-cartesia-ink-whisper",
+    "name": "cartesia/ink-whisper",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/ink-whisper",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-flux-general",
+    "name": "deepgram/flux-general",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/flux-general",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-flux-general-en",
+    "name": "deepgram/flux-general-en",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/flux-general-en",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-flux-general-multi",
+    "name": "deepgram/flux-general-multi",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/flux-general-multi",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-2",
+    "name": "deepgram/nova-2",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-2",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-2-conversationalai",
+    "name": "deepgram/nova-2-conversationalai",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-2-conversationalai",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-2-medical",
+    "name": "deepgram/nova-2-medical",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-2-medical",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-2-phonecall",
+    "name": "deepgram/nova-2-phonecall",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-2-phonecall",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-3",
+    "name": "deepgram/nova-3",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-3",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-deepgram-nova-3-medical",
+    "name": "deepgram/nova-3-medical",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/nova-3-medical",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-google-gemini-3-5-transcribe-live",
+    "name": "google/gemini-3.5-transcribe-live",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "google/gemini-3.5-transcribe-live",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-inworld-inworld-stt-1",
+    "name": "inworld/inworld-stt-1",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-stt-1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-speechmatics-enhanced",
+    "name": "speechmatics/enhanced",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "speechmatics/enhanced",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-speechmatics-linden-1",
+    "name": "speechmatics/linden-1",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "speechmatics/linden-1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-speechmatics-standard",
+    "name": "speechmatics/standard",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "speechmatics/standard",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-stt-livekit_inference-xai-stt-1",
+    "name": "xai/stt-1",
+    "kind": "stt",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/stt-1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia",
+    "name": "cartesia",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic",
+    "name": "cartesia/sonic",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-2",
+    "name": "cartesia/sonic-2",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-2",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-3",
+    "name": "cartesia/sonic-3",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-3",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-3-latest",
+    "name": "cartesia/sonic-3-latest",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-3-latest",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-3-5",
+    "name": "cartesia/sonic-3.5",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-3.5",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-latest",
+    "name": "cartesia/sonic-latest",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-latest",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-cartesia-sonic-turbo",
+    "name": "cartesia/sonic-turbo",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "cartesia/sonic-turbo",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-deepgram",
+    "name": "deepgram",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-deepgram-aura",
+    "name": "deepgram/aura",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/aura",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-deepgram-aura-2",
+    "name": "deepgram/aura-2",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "deepgram/aura-2",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-fishaudio",
+    "name": "fishaudio",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "fishaudio",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-fishaudio-s2-pro",
+    "name": "fishaudio/s2-pro",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "fishaudio/s2-pro",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-fishaudio-s2-1-pro",
+    "name": "fishaudio/s2.1-pro",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "fishaudio/s2.1-pro",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-fishaudio-s2-1-pro-free",
+    "name": "fishaudio/s2.1-pro-free",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "fishaudio/s2.1-pro-free",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld",
+    "name": "inworld",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-1",
+    "name": "inworld/inworld-tts-1",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-1",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-1-max",
+    "name": "inworld/inworld-tts-1-max",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-1-max",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-1-5",
+    "name": "inworld/inworld-tts-1.5",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-1.5",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-1-5-max",
+    "name": "inworld/inworld-tts-1.5-max",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-1.5-max",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-1-5-mini",
+    "name": "inworld/inworld-tts-1.5-mini",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-1.5-mini",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-inworld-inworld-tts-2",
+    "name": "inworld/inworld-tts-2",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "inworld/inworld-tts-2",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-rime",
+    "name": "rime",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "rime",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-rime-coda",
+    "name": "rime/coda",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "rime/coda",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-rime-mist",
+    "name": "rime/mist",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "rime/mist",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-rime-mistv2",
+    "name": "rime/mistv2",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "rime/mistv2",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-rime-mistv3",
+    "name": "rime/mistv3",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "rime/mistv3",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-tts-livekit_inference-xai-tts-1",
+    "name": "xai/tts-1",
+    "kind": "tts",
+    "protocol": "livekit_inference",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/tts-1",
+    "voice": "default",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime",
+    "name": "openai/gpt-realtime",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime-1-5",
+    "name": "openai/gpt-realtime-1.5",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime-1.5",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime-2",
+    "name": "openai/gpt-realtime-2",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime-2",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime-2-1",
+    "name": "openai/gpt-realtime-2.1",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime-2.1",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime-2-1-mini",
+    "name": "openai/gpt-realtime-2.1-mini",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime-2.1-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-openai-gpt-realtime-mini",
+    "name": "openai/gpt-realtime-mini",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "openai/gpt-realtime-mini",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-xai-grok-voice",
+    "name": "xai/grok-voice",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-voice",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-xai-grok-voice-latest",
+    "name": "xai/grok-voice-latest",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-voice-latest",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-realtime-livekit_realtime-xai-grok-voice-think-fast-2-0",
+    "name": "xai/grok-voice-think-fast-2.0",
+    "kind": "realtime",
+    "protocol": "livekit_realtime",
+    "base_url": "https://agent-gateway.livekit.cloud/v1",
+    "model": "xai/grok-voice-think-fast-2.0",
+    "voice": "",
+    "provider": "LiveKit Inference"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-4o",
+    "name": "OpenAI gpt-4o",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-4o-mini",
+    "name": "OpenAI gpt-4o-mini",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-4-1",
+    "name": "OpenAI gpt-4.1",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4.1",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-4-1-mini",
+    "name": "OpenAI gpt-4.1-mini",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4.1-mini",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-4-1-nano",
+    "name": "OpenAI gpt-4.1-nano",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4.1-nano",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-5",
+    "name": "OpenAI gpt-5",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-5",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-gpt-5-mini",
+    "name": "OpenAI gpt-5-mini",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-5-mini",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-o1",
+    "name": "OpenAI o1",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "o1",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-o3-mini",
+    "name": "OpenAI o3-mini",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://api.openai.com/v1",
+    "model": "o3-mini",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-stt-openai_stt-whisper-1",
+    "name": "OpenAI whisper-1",
+    "kind": "stt",
+    "protocol": "openai_stt",
+    "base_url": "https://api.openai.com/v1",
+    "model": "whisper-1",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-stt-openai_stt-gpt-4o-mini-transcribe",
+    "name": "OpenAI gpt-4o-mini-transcribe",
+    "kind": "stt",
+    "protocol": "openai_stt",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini-transcribe",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-stt-openai_stt-gpt-4o-transcribe",
+    "name": "OpenAI gpt-4o-transcribe",
+    "kind": "stt",
+    "protocol": "openai_stt",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-transcribe",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-tts-openai_tts-tts-1",
+    "name": "OpenAI tts-1",
+    "kind": "tts",
+    "protocol": "openai_tts",
+    "base_url": "https://api.openai.com/v1",
+    "model": "tts-1",
+    "voice": "alloy",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-tts-openai_tts-tts-1-hd",
+    "name": "OpenAI tts-1-hd",
+    "kind": "tts",
+    "protocol": "openai_tts",
+    "base_url": "https://api.openai.com/v1",
+    "model": "tts-1-hd",
+    "voice": "alloy",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-tts-openai_tts-gpt-4o-mini-tts",
+    "name": "OpenAI gpt-4o-mini-tts",
+    "kind": "tts",
+    "protocol": "openai_tts",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini-tts",
+    "voice": "alloy",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-realtime-openai_realtime-gpt-4o-realtime-preview",
+    "name": "OpenAI gpt-4o-realtime-preview",
+    "kind": "realtime",
+    "protocol": "openai_realtime",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-realtime-preview",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-realtime-openai_realtime-gpt-4o-mini-realtime-preview",
+    "name": "OpenAI gpt-4o-mini-realtime-preview",
+    "kind": "realtime",
+    "protocol": "openai_realtime",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini-realtime-preview",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-realtime-openai_realtime-gpt-realtime",
+    "name": "OpenAI gpt-realtime",
+    "kind": "realtime",
+    "protocol": "openai_realtime",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-realtime",
+    "voice": "",
+    "provider": "OpenAI API"
+  },
+  {
+    "config_id": "lk-llm-openai_chat-deepseek-v4-1-flash-1017-cloud",
+    "name": "Ollama DeepSeek V4.1 Flash",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://ollama.com/v1",
+    "model": "deepseek-v4.1-flash:1017-cloud",
+    "voice": "",
+    "provider": "Ollama API"
+  },
+  {
+    "config_id": "lk-stt-whisper_local-faster-whisper-tiny",
+    "name": "本地 Faster-Whisper",
+    "kind": "stt",
+    "protocol": "whisper_local",
+    "base_url": "",
+    "model": "faster-whisper-tiny",
+    "voice": "/models/faster-whisper-tiny",
+    "provider": "Local"
+  },
+  {
+    "config_id": "lk-tts-piper_local-zh_CN-huayan-medium",
+    "name": "本地 Piper 中文",
+    "kind": "tts",
+    "protocol": "piper_local",
+    "base_url": "",
+    "model": "zh_CN-huayan-medium",
+    "voice": "/models/piper/zh_CN-huayan-medium.onnx",
+    "provider": "Local"
+  }
+]

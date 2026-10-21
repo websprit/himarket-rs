@@ -34,40 +34,74 @@ DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", "deepseek-v4.1-flash:101
 WHISPER_MODEL_DIR = os.environ.get("WHISPER_MODEL_DIR", "/models/faster-whisper-tiny")
 PIPER_MODEL_PATH = os.environ.get("PIPER_MODEL_PATH", "/models/piper/zh_CN-huayan-medium.onnx")
 
-_whisper_model = None
-_piper_voice = None
+_whisper_models = {}
+_piper_voices = {}
 
 
-def get_whisper_model():
-    global _whisper_model
-    if _whisper_model is not None:
-        return _whisper_model
-    try:
-        from faster_whisper import WhisperModel
+def get_whisper_model(model_dir: str):
+    model_ref = model_dir if model_dir and Path(model_dir).exists() else (WHISPER_MODEL_DIR if Path(WHISPER_MODEL_DIR).exists() else "tiny")
+    if model_ref in _whisper_models:
+        return _whisper_models[model_ref]
+    from faster_whisper import WhisperModel
 
-        model_ref = WHISPER_MODEL_DIR if Path(WHISPER_MODEL_DIR).exists() else "tiny"
-        log.info("Loading local Faster-Whisper model from %s ...", model_ref)
-        _whisper_model = WhisperModel(model_ref, device="cpu", compute_type="int8")
-        log.info("Faster-Whisper model loaded successfully.")
-    except Exception as exc:
-        log.warning("Faster-Whisper load warning (%s); will use fallback STT if needed", exc)
-    return _whisper_model
+    log.info("Loading local Faster-Whisper model from %s ...", model_ref)
+    _whisper_models[model_ref] = WhisperModel(model_ref, device="cpu", compute_type="int8")
+    return _whisper_models[model_ref]
 
 
-def get_piper_voice():
-    global _piper_voice
-    if _piper_voice is not None:
-        return _piper_voice
-    try:
-        from piper.voice import PiperVoice
+def get_piper_voice(model_path: str):
+    path = model_path or PIPER_MODEL_PATH
+    if path in _piper_voices:
+        return _piper_voices[path]
+    from piper.voice import PiperVoice
 
-        if Path(PIPER_MODEL_PATH).exists():
-            log.info("Loading local Piper ONNX voice from %s ...", PIPER_MODEL_PATH)
-            _piper_voice = PiperVoice.load(PIPER_MODEL_PATH)
-            log.info("Piper ONNX voice loaded successfully.")
-    except Exception as exc:
-        log.warning("Piper voice load warning (%s); will use synthesized voice waveform", exc)
-    return _piper_voice
+    if not Path(path).exists():
+        raise FileNotFoundError(path)
+    log.info("Loading local Piper ONNX voice from %s ...", path)
+    _piper_voices[path] = PiperVoice.load(path)
+    return _piper_voices[path]
+
+
+def inference_token(binding: dict) -> str:
+    from datetime import timedelta
+    from livekit import api
+
+    token = (
+        api.AccessToken(binding.get("api_key") or "", binding.get("api_secret") or "")
+        .with_identity("himarket-agent")
+        .with_inference_grants(api.InferenceGrants(perform=True))
+        .with_ttl(timedelta(minutes=10))
+        .to_jwt()
+    )
+    return token
+
+
+async def transcribe(binding: dict, pcm_bytes: bytes) -> tuple[str, int]:
+    protocol = binding.get("protocol") or "whisper_local"
+    if protocol in ("openai_stt", "livekit_inference"):
+        return await transcribe_openai(binding, pcm_bytes, inference=protocol == "livekit_inference")
+    text, duration_ms = await asyncio.to_thread(run_local_stt, pcm_bytes, 16000, binding.get("voice") or binding.get("model") or "")
+    return text, duration_ms
+
+
+async def transcribe_openai(binding: dict, pcm_bytes: bytes, inference: bool = False) -> tuple[str, int]:
+    duration_ms = max(100, int(len(pcm_bytes) / (16000 * 2) * 1000))
+    url = binding.get("base_url", "").rstrip("/") + "/audio/transcriptions"
+    token = inference_token(binding) if inference else binding.get("api_key", "")
+    headers = {"Authorization": f"Bearer {token}"}
+    files = {"file": ("speech.wav", pcm16_to_wav_bytes(pcm_bytes), "audio/wav")}
+    data = {"model": binding.get("model") or "whisper-1"}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(url, headers=headers, data=data, files=files)
+        response.raise_for_status()
+        return (response.json().get("text") or "").strip(), duration_ms
+
+
+async def synthesize(binding: dict, text: str) -> tuple[bytes, int, int]:
+    protocol = binding.get("protocol") or "piper_local"
+    if protocol in ("openai_tts", "livekit_inference"):
+        return await synthesize_openai(binding, text, inference=protocol == "livekit_inference")
+    return await asyncio.to_thread(run_local_tts, text, 24000, binding.get("voice") or PIPER_MODEL_PATH)
 
 
 def pcm16_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:
@@ -80,10 +114,10 @@ def pcm16_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 
-def run_local_stt(pcm_bytes: bytes, sample_rate: int = 16000) -> tuple[str, int]:
+def run_local_stt(pcm_bytes: bytes, sample_rate: int = 16000, model_dir: str = "") -> tuple[str, int]:
     """Run local Faster-Whisper transcription on 16kHz mono PCM16 audio."""
     duration_ms = max(100, int(len(pcm_bytes) / (sample_rate * 2) * 1000))
-    model = get_whisper_model()
+    model = get_whisper_model(model_dir)
     if model is not None:
         try:
             wav_bytes = pcm16_to_wav_bytes(pcm_bytes, sample_rate)
@@ -112,9 +146,9 @@ def resample_pcm16(pcm: bytes, src_sr: int, dst_sr: int) -> bytes:
     return np.interp(dst_x, src_x, samples).astype(np.int16).tobytes()
 
 
-def run_local_tts(text: str, sample_rate: int = 24000) -> tuple[bytes, int, int]:
-    """Synthesize Mandarin speech with the local Piper ONNX voice."""
-    voice = get_piper_voice()
+def run_local_tts(text: str, sample_rate: int = 24000, model_path: str = "") -> tuple[bytes, int, int]:
+    """Synthesize Mandarin speech with the configured Piper ONNX voice."""
+    voice = get_piper_voice(model_path)
     if voice is not None:
         try:
             pieces = []
@@ -147,6 +181,31 @@ def run_local_tts(text: str, sample_rate: int = 24000) -> tuple[bytes, int, int]
     ) * syllable_env * fade
     pcm16 = (wave_f * 14000).astype(np.int16).tobytes()
     return pcm16, sample_rate, int(dur_sec * 1000)
+
+
+async def synthesize_openai(binding: dict, text: str, inference: bool = False) -> tuple[bytes, int, int]:
+    url = binding.get("base_url", "").rstrip("/") + "/audio/speech"
+    token = inference_token(binding) if inference else binding.get("api_key", "")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    body = {
+        "model": binding.get("model") or "tts-1",
+        "voice": binding.get("voice") or "alloy",
+        "input": text,
+        "response_format": "wav",
+    }
+    async with httpx.AsyncClient(timeout=40.0) as client:
+        response = await client.post(url, headers=headers, json=body)
+        response.raise_for_status()
+        audio = response.content
+    if audio[:4] == b"RIFF":
+        with wave.open(io.BytesIO(audio), "rb") as wav_file:
+            pcm = wav_file.readframes(wav_file.getnframes())
+            sample_rate = wav_file.getframerate()
+        pcm = resample_pcm16(pcm, sample_rate, 24000)
+    else:
+        raise RuntimeError("TTS API did not return WAV audio")
+    duration_ms = max(100, int(len(pcm) / (24000 * 2) * 1000))
+    return pcm, 24000, duration_ms
 
 
 async def report_metering_event(
@@ -192,17 +251,30 @@ async def report_metering_event(
         log.warning("Failed to report %s metering event: %s", category, exc)
 
 
-async def call_llm_via_cliproxy(
+def model_binding(job_meta: dict, key: str) -> dict:
+    value = job_meta.get(key) or {}
+    if not isinstance(value, dict):
+        value = {}
+    return value
+
+
+async def call_llm(
     user_text: str,
     session_id: str,
     tenant_id: str,
     api_key_id: str,
-    llm_model: str,
+    binding: dict,
     system_prompt: str,
-) -> str:
-    url = f"{CLIPROXY_BASE_URL.rstrip('/')}/chat/completions"
+) -> tuple[str, dict]:
+    base_url = (binding.get("base_url") or CLIPROXY_BASE_URL).rstrip("/")
+    if binding.get("protocol") == "livekit_inference":
+        api_key = inference_token(binding)
+    else:
+        api_key = binding.get("api_key") or CLIPROXY_API_KEY
+    llm_model = binding.get("model") or DEFAULT_LLM_MODEL
+    url = f"{base_url}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {CLIPROXY_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "X-Session-ID": session_id,
         "X-HiMarket-Session-Id": session_id,
@@ -229,9 +301,9 @@ async def call_llm_via_cliproxy(
         msg = data["choices"][0]["message"]
         content = (msg.get("content") or "").strip()
         if not content and msg.get("reasoning"):
-            # Fallback if reasoning model spent budget on reasoning
             content = "你好！我已经收到你的语音消息，目前语音对讲链路和计费服务运行一切正常。"
-        return content or "你好！我是你的智能语音助手，很高兴为你服务。"
+        usage = data.get("usage") or {}
+        return content or "你好！我是你的智能语音助手，很高兴为你服务。", usage
 
 
 async def publish_Data_subtitle(room: rtc.Room, role: str, text: str, turn_id: str):
@@ -266,8 +338,12 @@ async def entrypoint(ctx: agents.JobContext):
     session_id = job_meta.get("session_id") or ctx.room.name
     tenant_id = job_meta.get("tenant_id") or "tenant_ugreen_01"
     api_key_id = job_meta.get("api_key_id") or "ak_live_ugreen_01"
-    llm_model = job_meta.get("llm_model") or DEFAULT_LLM_MODEL
+    llm = model_binding(job_meta, "llm")
+    stt = model_binding(job_meta, "stt")
+    tts = model_binding(job_meta, "tts")
+    llm_model = llm.get("model") or job_meta.get("llm_model") or DEFAULT_LLM_MODEL
     system_prompt = job_meta.get("system_prompt") or ""
+    log.info("Using LLM %s via %s, STT %s, TTS %s", llm_model, llm.get("base_url"), stt.get("protocol"), tts.get("protocol"))
 
     # Publish an output audio track for the AI Agent's voice
     audio_source = rtc.AudioSource(sample_rate=24000, num_channels=1)
@@ -297,9 +373,7 @@ async def entrypoint(ctx: agents.JobContext):
                 user_text = preset_text
                 stt_dur_ms = 2200
             else:
-                user_text, stt_dur_ms = await asyncio.to_thread(
-                    run_local_stt, user_pcm16_16k, 16000
-                )
+                user_text, stt_dur_ms = await transcribe(stt, user_pcm16_16k)
 
             log.info("[Turn %s] STT transcribed (%d ms): %s", turn_id, stt_dur_ms, user_text)
             await publish_Data_subtitle(ctx.room, "user", user_text, turn_id)
@@ -310,28 +384,41 @@ async def entrypoint(ctx: agents.JobContext):
                     tenant_id,
                     api_key_id,
                     "stt",
-                    "faster-whisper-local",
+                    stt.get("model") or "stt",
                     {"audio_duration_ms": stt_dur_ms},
                 )
             )
 
             # Step 2: Text LLM via CLIProxyAPI -> Ollama Cloud (`deepseek-v4.1-flash:1017-cloud`)
             try:
-                reply_text = await call_llm_via_cliproxy(
-                    user_text, session_id, tenant_id, api_key_id, llm_model, system_prompt
+                reply_text, usage = await call_llm(
+                    user_text, session_id, tenant_id, api_key_id, llm, system_prompt
+                )
+                asyncio.create_task(
+                    report_metering_event(
+                        session_id,
+                        ctx.room.name,
+                        tenant_id,
+                        api_key_id,
+                        "text_llm",
+                        llm_model,
+                        {
+                            "prompt_tokens": usage.get("prompt_tokens"),
+                            "completion_tokens": usage.get("completion_tokens"),
+                            "cached_tokens": usage.get("cached_tokens") or (usage.get("prompt_tokens_details") or {}).get("cached_tokens"),
+                        },
+                    )
                 )
             except Exception as exc:
-                log.error("[Turn %s] CLIProxyAPI LLM call failed: %s", turn_id, exc)
-                reply_text = "我已经收到你的语音，当前本地语音通道与计费服务连接正常。"
+                log.error("[Turn %s] LLM call failed: %s", turn_id, exc)
+                reply_text = "我已经收到你的语音，但当前配置的语言模型调用失败。"
 
             log.info("[Turn %s] LLM reply: %s", turn_id, reply_text)
             await publish_Data_subtitle(ctx.room, "assistant", reply_text, turn_id)
 
             # Step 3: Local Piper TTS synthesis + streaming audio frames to LiveKit room
             await ctx.room.local_participant.set_attributes({"agent_state": "speaking"})
-            pcm_out, out_sr, tts_dur_ms = await asyncio.to_thread(
-                run_local_tts, reply_text, 24000
-            )
+            pcm_out, out_sr, tts_dur_ms = await synthesize(tts, reply_text)
             asyncio.create_task(
                 report_metering_event(
                     session_id,
@@ -339,7 +426,7 @@ async def entrypoint(ctx: agents.JobContext):
                     tenant_id,
                     api_key_id,
                     "tts",
-                    "piper-local-zh",
+                    tts.get("model") or "tts",
                     {
                         "tts_characters": len(reply_text),
                         "audio_duration_ms": tts_dur_ms,

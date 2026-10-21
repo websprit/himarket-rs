@@ -6,8 +6,8 @@ use axum::{
 };
 use himarket_core::{ApiResponse, AppError, UsageSummaryResponse};
 use himarket_dal::{
-    ApiKeyCreated, ApiKeyDto, AuthSession, ConsumerDto, DalRepo, PortalDto, ProductDto,
-    VoiceSessionDto,
+    ApiKeyCreated, ApiKeyDto, AuthSession, ConsumerDto, DalRepo, ModelConfig, PortalDto,
+    ProductDto, VoiceSessionDto,
 };
 use serde::Deserialize;
 
@@ -38,6 +38,62 @@ pub struct ApiKeyRequest {
     pub consumer_id: String,
 }
 
+#[derive(Deserialize)]
+pub struct CredentialsRequest {
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
+    pub base_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ModelConfigRequest {
+    pub name: String,
+    pub kind: String,
+    pub protocol: String,
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
+    pub model: String,
+    pub voice: Option<String>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(serde::Serialize)]
+pub struct ModelConfigView {
+    pub config_id: String,
+    pub name: String,
+    pub kind: String,
+    pub protocol: String,
+    pub base_url: String,
+    pub api_key_hint: String,
+    pub has_api_secret: bool,
+    pub model: String,
+    pub voice: String,
+    pub is_default: bool,
+    pub status: String,
+}
+
+fn view_config(config: ModelConfig) -> ModelConfigView {
+    let hint = if config.api_key.len() <= 4 {
+        if config.api_key.is_empty() { String::new() } else { "****".into() }
+    } else {
+        format!("****{}", &config.api_key[config.api_key.len() - 4..])
+    };
+    ModelConfigView {
+        config_id: config.config_id,
+        name: config.name,
+        kind: config.kind,
+        protocol: config.protocol,
+        base_url: config.base_url,
+        api_key_hint: hint,
+        has_api_secret: !config.api_secret.is_empty(),
+        model: config.model,
+        voice: config.voice,
+        is_default: config.is_default,
+        status: config.status,
+    }
+}
+
 pub fn market_router(repo: DalRepo) -> Router {
     Router::new()
         .route("/api/v1/auth/login", post(login))
@@ -47,6 +103,10 @@ pub fn market_router(repo: DalRepo) -> Router {
         .route("/api/v1/consumers", get(list_consumers).post(create_consumer))
         .route("/api/v1/api-keys", get(list_api_keys).post(create_api_key))
         .route("/api/v1/voice/sessions", get(list_voice_sessions))
+        .route("/api/v1/model-configs", get(list_model_configs).post(create_model_config))
+        .route("/api/v1/model-configs/{config_id}/credentials", post(update_model_credentials))
+        .route("/api/v1/model-configs/{config_id}/default", post(set_default_model_config))
+        .route("/api/v1/model-configs/{config_id}/disable", post(disable_model_config))
         .route("/api/v1/usage/summary", get(get_usage_summary))
         .with_state(repo)
 }
@@ -196,6 +256,78 @@ async fn list_voice_sessions(
     let user = require_user(&repo, &headers).await?;
     let tenant = if user.role == "developer" { Some(user.subject_id.as_str()) } else { q.tenant_id.as_deref() };
     Ok(ApiResponse::ok(repo.list_voice_sessions(tenant).await.map_err(|e| AppError::Internal(e.to_string()))?))
+}
+
+async fn list_model_configs(
+    State(repo): State<DalRepo>,
+    Query(q): Query<UsageQueryParams>,
+) -> Result<Json<ApiResponse<Vec<ModelConfigView>>>, AppError> {
+    let items = repo.list_model_configs(None).await.map_err(|e| AppError::Internal(e.to_string()))?;
+    let _ = q;
+    Ok(ApiResponse::ok(items.into_iter().map(view_config).collect()))
+}
+
+async fn create_model_config(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    Json(req): Json<ModelConfigRequest>,
+) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden("only admin can configure models".into()));
+    }
+    let created = repo.create_model_config(
+        &req.name,
+        &req.kind,
+        &req.protocol,
+        req.base_url.as_deref().unwrap_or(""),
+        req.api_key.as_deref().unwrap_or(""),
+        req.api_secret.as_deref().unwrap_or(""),
+        &req.model,
+        req.voice.as_deref().unwrap_or(""),
+        req.is_default.unwrap_or(false),
+    ).await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(view_config(created)))
+}
+
+async fn update_model_credentials(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    axum::extract::Path(config_id): axum::extract::Path<String>,
+    Json(req): Json<CredentialsRequest>,
+) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden("only admin can configure models".into()));
+    }
+    let updated = repo.update_model_credentials(&config_id, req.api_key.as_deref(), req.api_secret.as_deref(), req.base_url.as_deref())
+        .await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(view_config(updated)))
+}
+
+async fn set_default_model_config(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    axum::extract::Path(config_id): axum::extract::Path<String>,
+) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden("only admin can configure models".into()));
+    }
+    Ok(ApiResponse::ok(view_config(repo.set_default_model_config(&config_id).await.map_err(|e| AppError::BadRequest(e.to_string()))?)))
+}
+
+async fn disable_model_config(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    axum::extract::Path(config_id): axum::extract::Path<String>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden("only admin can configure models".into()));
+    }
+    repo.disable_model_config(&config_id).await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(()))
 }
 
 async fn get_usage_summary(

@@ -255,7 +255,7 @@ spec:
             type: Directory
         - name: agent-code
           hostPath:
-            path: /Users/ugreen/Documents/ChatGPT/ai对话/voice-agent-worker/agent_main.py
+            path: /Users/ugreen/Documents/ChatGPT/ai对话/himarket-rs/voice-agent/agent_main.py
             type: File
       containers:
         - name: worker

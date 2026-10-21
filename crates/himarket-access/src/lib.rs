@@ -8,7 +8,7 @@ use himarket_core::{
     ApiResponse, AppError, CreateVoiceSessionRequest, CreateVoiceSessionResponse,
     VerifiedBusinessKey,
 };
-use himarket_dal::DalRepo;
+use himarket_dal::{DalRepo, ModelConfig};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -68,6 +68,31 @@ struct RoomAgentDispatchClaim {
     metadata: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelBinding {
+    pub config_id: String,
+    pub protocol: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_secret: String,
+    pub model: String,
+    pub voice: String,
+}
+
+impl From<ModelConfig> for ModelBinding {
+    fn from(config: ModelConfig) -> Self {
+        Self {
+            config_id: config.config_id,
+            protocol: config.protocol,
+            base_url: config.base_url,
+            api_key: config.api_key,
+            api_secret: config.api_secret,
+            model: config.model,
+            voice: config.voice,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AgentJobMetadata {
     pub session_id: String,
@@ -78,6 +103,9 @@ pub struct AgentJobMetadata {
     pub llm_model: String,
     pub stt_model: Option<String>,
     pub tts_voice: Option<String>,
+    pub llm: ModelBinding,
+    pub stt: ModelBinding,
+    pub tts: ModelBinding,
     pub system_prompt: Option<String>,
 }
 
@@ -130,15 +158,25 @@ async fn create_voice_session(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let llm = state.repo.resolve_model_config("llm", Some(req.llm_model.as_str())).await.map_err(|e| AppError::Internal(e.to_string()))?.ok_or_else(|| AppError::BadRequest("没有可用的 LLM 配置".into()))?;
+    let stt = state.repo.resolve_model_config("stt", req.stt_model.as_deref()).await.map_err(|e| AppError::Internal(e.to_string()))?.ok_or_else(|| AppError::BadRequest("没有可用的 STT 配置".into()))?;
+    let tts = state.repo.resolve_model_config("tts", req.tts_voice.as_deref()).await.map_err(|e| AppError::Internal(e.to_string()))?.ok_or_else(|| AppError::BadRequest("没有可用的 TTS 配置".into()))?;
+    let llm_binding = ModelBinding::from(llm);
+    let stt_binding = ModelBinding::from(stt);
+    let tts_binding = ModelBinding::from(tts);
+
     let job_meta = AgentJobMetadata {
         session_id: session_id.clone(),
         tenant_id: verified.tenant_id.clone(),
         api_key_id: verified.api_key_id.clone(),
         consumer_id: verified.consumer_id.clone(),
         mode: req.mode.clone(),
-        llm_model: req.llm_model.clone(),
-        stt_model: req.stt_model.clone(),
-        tts_voice: req.tts_voice.clone(),
+        llm_model: llm_binding.model.clone(),
+        stt_model: Some(stt_binding.model.clone()),
+        tts_voice: Some(tts_binding.voice.clone()),
+        llm: llm_binding,
+        stt: stt_binding,
+        tts: tts_binding,
         system_prompt: req.system_prompt.clone(),
     };
     let job_meta_json =
@@ -214,7 +252,7 @@ async fn create_voice_session(
         tenant_id: verified.tenant_id,
         api_key_id: verified.api_key_id,
         mode: req.mode,
-        llm_model: req.llm_model,
+        llm_model: job_meta.llm_model,
     }))
 }
 

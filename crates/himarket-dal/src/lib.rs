@@ -44,6 +44,21 @@ pub struct ApiKeyCreated {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelConfig {
+    pub config_id: String,
+    pub name: String,
+    pub kind: String,
+    pub protocol: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_secret: String,
+    pub model: String,
+    pub voice: String,
+    pub is_default: bool,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionDto {
     pub session_id: String,
     pub room_name: String,
@@ -221,6 +236,21 @@ impl DalRepo {
             cost_usd_micros INTEGER NOT NULL DEFAULT 0,
             occurred_at_ms INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS ai_model_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            protocol TEXT NOT NULL,
+            base_url TEXT NOT NULL DEFAULT '',
+            api_key TEXT NOT NULL DEFAULT '',
+            api_secret TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL,
+            voice TEXT NOT NULL DEFAULT '',
+            is_default INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS usage_hourly_rollup (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             stat_hour TEXT NOT NULL,
@@ -252,6 +282,10 @@ impl DalRepo {
         let _ = sqlx::query("ALTER TABLE developer ADD COLUMN password_hash TEXT")
             .execute(&self.pool)
             .await;
+        let _ = sqlx::query("ALTER TABLE ai_model_config ADD COLUMN api_secret TEXT NOT NULL DEFAULT ''")
+            .execute(&self.pool)
+            .await;
+        self.seed_livekit_catalog().await?;
 
         // Seed default Portal, Developer (Tenant), Consumer, Product, and Business API Key for immediate Android & E2E testing
         sqlx::query(
@@ -301,6 +335,16 @@ impl DalRepo {
         .bind(&key_hash)
         .execute(&self.pool)
         .await?;
+
+        let config_count: i64 = sqlx::query("SELECT COUNT(*) AS n FROM ai_model_config")
+            .fetch_one(&self.pool)
+            .await?
+            .get("n");
+        if config_count == 0 {
+            self.insert_model_config("cfg_llm_default", "Ollama DeepSeek", "llm", "openai_chat", "https://ollama.com/v1", "cb4631cad50c4e3eb1342b9ef0075dd5.Ym7un785NAKQCVzDMK8DjK52", "", "deepseek-v4.1-flash:1017-cloud", "", true).await?;
+            self.insert_model_config("cfg_stt_default", "本地 Faster-Whisper", "stt", "whisper_local", "", "", "", "faster-whisper-tiny", "/models/faster-whisper-tiny", true).await?;
+            self.insert_model_config("cfg_tts_default", "本地 Piper 中文", "tts", "piper_local", "", "", "", "zh_CN-huayan-medium", "/models/piper/zh_CN-huayan-medium.onnx", true).await?;
+        }
 
         Ok(())
     }
@@ -836,5 +880,131 @@ impl DalRepo {
             state: r.get("state"),
             created_at: r.get("created_at"),
         }).collect())
+    }
+
+    async fn insert_model_config(&self, config_id: &str, name: &str, kind: &str, protocol: &str, base_url: &str, api_key: &str, api_secret: &str, model: &str, voice: &str, is_default: bool) -> Result<()> {
+        if is_default {
+            sqlx::query("UPDATE ai_model_config SET is_default = 0 WHERE kind = ?").bind(kind).execute(&self.pool).await?;
+        }
+        sqlx::query("INSERT INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')")
+            .bind(config_id).bind(name).bind(kind).bind(protocol).bind(base_url).bind(api_key).bind(api_secret).bind(model).bind(voice).bind(if is_default { 1 } else { 0 })
+            .execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn create_model_config(&self, name: &str, kind: &str, protocol: &str, base_url: &str, api_key: &str, api_secret: &str, model: &str, voice: &str, is_default: bool) -> Result<ModelConfig> {
+        let config_id = format!("cfg_{}", uuid::Uuid::now_v7().simple());
+        self.insert_model_config(&config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default).await?;
+        self.get_model_config(&config_id).await?.ok_or_else(|| anyhow::anyhow!("config missing"))
+    }
+
+    pub async fn update_model_credentials(&self, config_id: &str, api_key: Option<&str>, api_secret: Option<&str>, base_url: Option<&str>) -> Result<ModelConfig> {
+        if let Some(value) = api_key.filter(|v| !v.is_empty()) {
+            sqlx::query("UPDATE ai_model_config SET api_key = ? WHERE config_id = ?").bind(value).bind(config_id).execute(&self.pool).await?;
+        }
+        if let Some(value) = api_secret.filter(|v| !v.is_empty()) {
+            sqlx::query("UPDATE ai_model_config SET api_secret = ? WHERE config_id = ?").bind(value).bind(config_id).execute(&self.pool).await?;
+        }
+        if let Some(value) = base_url.filter(|v| !v.is_empty()) {
+            sqlx::query("UPDATE ai_model_config SET base_url = ? WHERE config_id = ?").bind(value).bind(config_id).execute(&self.pool).await?;
+        }
+        self.get_model_config(config_id).await?.ok_or_else(|| anyhow::anyhow!("config not found"))
+    }
+
+    pub async fn list_model_configs(&self, kind: Option<&str>) -> Result<Vec<ModelConfig>> {
+        let rows = if let Some(kind) = kind {
+            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE kind = ? ORDER BY is_default DESC, name").bind(kind).fetch_all(&self.pool).await?
+        } else {
+            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config ORDER BY kind, is_default DESC, name").fetch_all(&self.pool).await?
+        };
+        Ok(rows.into_iter().map(model_config_from_row).collect())
+    }
+
+    pub async fn get_model_config(&self, config_id: &str) -> Result<Option<ModelConfig>> {
+        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE config_id = ?")
+            .bind(config_id).fetch_optional(&self.pool).await?.map(model_config_from_row))
+    }
+
+    pub async fn set_default_model_config(&self, config_id: &str) -> Result<ModelConfig> {
+        let current = self.get_model_config(config_id).await?.ok_or_else(|| anyhow::anyhow!("config not found"))?;
+        sqlx::query("UPDATE ai_model_config SET is_default = 0 WHERE kind = ?").bind(&current.kind).execute(&self.pool).await?;
+        sqlx::query("UPDATE ai_model_config SET is_default = 1, status = 'ACTIVE' WHERE config_id = ?").bind(config_id).execute(&self.pool).await?;
+        Ok(self.get_model_config(config_id).await?.unwrap())
+    }
+
+    pub async fn disable_model_config(&self, config_id: &str) -> Result<()> {
+        sqlx::query("UPDATE ai_model_config SET status = 'DISABLED', is_default = 0 WHERE config_id = ?").bind(config_id).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn resolve_model_config(&self, kind: &str, requested: Option<&str>) -> Result<Option<ModelConfig>> {
+        if let Some(name) = requested.map(str::trim).filter(|v| !v.is_empty()) {
+            if let Some(found) = sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND (config_id = ? OR model = ? OR name = ?) ORDER BY is_default DESC LIMIT 1")
+                .bind(kind).bind(name).bind(name).bind(name).fetch_optional(&self.pool).await? {
+                return Ok(Some(model_config_from_row(found)));
+            }
+        }
+        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND is_default = 1 LIMIT 1")
+            .bind(kind).fetch_optional(&self.pool).await?.map(model_config_from_row))
+    }
+
+    async fn seed_livekit_catalog(&self) -> Result<()> {
+        let catalog: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../catalog/livekit_models.json"))?;
+        for item in catalog {
+            sqlx::query(
+                "INSERT OR IGNORE INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status)
+                 VALUES (?, ?, ?, ?, ?, '', '', ?, ?, 0, 'ACTIVE')",
+            )
+            .bind(item["config_id"].as_str().unwrap_or_default())
+            .bind(item["name"].as_str().unwrap_or_default())
+            .bind(item["kind"].as_str().unwrap_or_default())
+            .bind(item["protocol"].as_str().unwrap_or_default())
+            .bind(item["base_url"].as_str().unwrap_or_default())
+            .bind(item["model"].as_str().unwrap_or_default())
+            .bind(item["voice"].as_str().unwrap_or_default())
+            .execute(&self.pool)
+            .await?;
+        }
+        self.ensure_model_default("llm", "openai_chat", "deepseek-v4.1-flash:1017-cloud").await?;
+        self.ensure_model_default("stt", "whisper_local", "faster-whisper-tiny").await?;
+        self.ensure_model_default("tts", "piper_local", "zh_CN-huayan-medium").await?;
+        sqlx::query("UPDATE ai_model_config SET api_key = ? WHERE protocol = 'openai_chat' AND model = 'deepseek-v4.1-flash:1017-cloud' AND api_key = ''")
+            .bind("cb4631cad50c4e3eb1342b9ef0075dd5.Ym7un785NAKQCVzDMK8DjK52")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn ensure_model_default(&self, kind: &str, protocol: &str, model: &str) -> Result<()> {
+        let existing: i64 = sqlx::query("SELECT COUNT(*) AS n FROM ai_model_config WHERE kind = ? AND is_default = 1")
+            .bind(kind)
+            .fetch_one(&self.pool)
+            .await?
+            .get("n");
+        if existing == 0 {
+            sqlx::query("UPDATE ai_model_config SET is_default = 1 WHERE config_id = (SELECT config_id FROM ai_model_config WHERE kind = ? AND protocol = ? AND model = ? LIMIT 1)")
+                .bind(kind)
+                .bind(protocol)
+                .bind(model)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
+}
+
+fn model_config_from_row(row: sqlx::sqlite::SqliteRow) -> ModelConfig {
+    ModelConfig {
+        config_id: row.get("config_id"),
+        name: row.get("name"),
+        kind: row.get("kind"),
+        protocol: row.get("protocol"),
+        base_url: row.get("base_url"),
+        api_key: row.get("api_key"),
+        api_secret: row.get("api_secret"),
+        model: row.get("model"),
+        voice: row.get("voice"),
+        is_default: row.get::<i64, _>("is_default") == 1,
+        status: row.get("status"),
     }
 }
