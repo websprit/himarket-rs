@@ -1,0 +1,15 @@
+[package]
+name = "himarket-dal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+himarket-core = { path = "../himarket-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+tracing.workspace = true
