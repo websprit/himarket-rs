@@ -1,0 +1,296 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: himarket-voice
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voice-platform-config
+  namespace: himarket-voice
+data:
+  livekit.yaml: |
+    port: 7880
+    log_level: info
+    rtc:
+      tcp_port: 7881
+      udp_port: 7882
+      use_external_ip: false
+      node_ip: 127.0.0.1
+    keys:
+      devkey: secret_himarket_livekit_2026_key_0123456789
+  cliproxy.yaml: |
+    config-version: 8
+    server:
+      host: "0.0.0.0"
+      port: 8317
+    access:
+      api-keys:
+        - "cpa-internal-key"
+    api-keys:
+      openai-compatibility:
+        - name: "ollama-cloud"
+          base-url: "https://ollama.com/v1"
+          keys:
+            - api-key: "cb4631cad50c4e3eb1342b9ef0075dd5.Ym7un785NAKQCVzDMK8DjK52"
+          models:
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "deepseek-v4.1-flash:1017-cloud"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: himarket-rs
+  namespace: himarket-voice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: himarket-rs
+  template:
+    metadata:
+      labels:
+        app: himarket-rs
+    spec:
+      containers:
+        - name: himarket-rs
+          image: himarket-rs:dev
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              value: "sqlite:/data/himarket.db?mode=rwc"
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:8080"
+            - name: LIVEKIT_API_KEY
+              value: "devkey"
+            - name: LIVEKIT_API_SECRET
+              value: "secret_himarket_livekit_2026_key_0123456789"
+            - name: LIVEKIT_PUBLIC_WS_URL
+              value: "ws://127.0.0.1:7880"
+            - name: LIVEKIT_INTERNAL_HTTP_URL
+              value: "http://livekit:7880"
+            - name: HIMARKET_INTERNAL_SECRET
+              value: "hm_internal_metering_secret_2026"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: himarket-rs
+  namespace: himarket-voice
+spec:
+  type: NodePort
+  selector:
+    app: himarket-rs
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cliproxyapi
+  namespace: himarket-voice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cliproxyapi
+  template:
+    metadata:
+      labels:
+        app: cliproxyapi
+    spec:
+      volumes:
+        - name: cfg
+          configMap:
+            name: voice-platform-config
+      containers:
+        - name: cliproxyapi
+          image: cliproxyapi-metering:dev
+          imagePullPolicy: Never
+          args: ["-config", "/config/cliproxy.yaml", "--local-model"]
+          volumeMounts:
+            - name: cfg
+              mountPath: /config
+          ports:
+            - containerPort: 8317
+          env:
+            - name: HIMARKET_METERING_URL
+              value: "http://himarket-rs:8080/internal/v1/metering/events"
+            - name: HIMARKET_INTERNAL_SECRET
+              value: "hm_internal_metering_secret_2026"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cliproxyapi
+  namespace: himarket-voice
+spec:
+  type: NodePort
+  selector:
+    app: cliproxyapi
+  ports:
+    - name: http
+      port: 8317
+      targetPort: 8317
+      nodePort: 30317
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  namespace: himarket-voice
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      app: livekit
+  template:
+    metadata:
+      labels:
+        app: livekit
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: cfg
+          configMap:
+            name: voice-platform-config
+      containers:
+        - name: livekit
+          image: livekit-metering:dev
+          imagePullPolicy: Never
+          args: ["--config", "/config/livekit.yaml"]
+          volumeMounts:
+            - name: cfg
+              mountPath: /config
+          ports:
+            - name: http
+              containerPort: 7880
+              hostPort: 7880
+            - name: rtc-tcp
+              containerPort: 7881
+              hostPort: 7881
+            - name: rtc-udp
+              containerPort: 7882
+              hostPort: 7882
+              protocol: UDP
+          env:
+            - name: HIMARKET_METERING_URL
+              value: "http://himarket-rs:8080/internal/v1/metering/events"
+            - name: HIMARKET_INTERNAL_SECRET
+              value: "hm_internal_metering_secret_2026"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  namespace: himarket-voice
+spec:
+  type: NodePort
+  selector:
+    app: livekit
+  ports:
+    - name: http
+      port: 7880
+      targetPort: 7880
+      nodePort: 30880
+    - name: rtc-tcp
+      port: 7881
+      targetPort: 7881
+      nodePort: 30881
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-agent-worker
+  namespace: himarket-voice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: voice-agent-worker
+  template:
+    metadata:
+      labels:
+        app: voice-agent-worker
+    spec:
+      enableServiceLinks: false
+      volumes:
+        - name: models
+          hostPath:
+            path: /Users/ugreen/Documents/ChatGPT/ai对话/voice-agent-worker/models
+            type: Directory
+        - name: agent-code
+          hostPath:
+            path: /Users/ugreen/Documents/ChatGPT/ai对话/voice-agent-worker/agent_main.py
+            type: File
+      containers:
+        - name: worker
+          image: himarket-voice-agent:dev
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: agent-code
+              mountPath: /app/agent_main.py
+          env:
+            - name: LIVEKIT_URL
+              value: "ws://livekit:7880"
+            - name: LIVEKIT_API_KEY
+              value: "devkey"
+            - name: LIVEKIT_API_SECRET
+              value: "secret_himarket_livekit_2026_key_0123456789"
+            - name: HIMARKET_METERING_URL
+              value: "http://himarket-rs:8080/internal/v1/metering/events"
+            - name: HIMARKET_INTERNAL_SECRET
+              value: "hm_internal_metering_secret_2026"
+            - name: CLIPROXY_BASE_URL
+              value: "http://cliproxyapi:8317/v1"
+            - name: CLIPROXY_API_KEY
+              value: "cpa-internal-key"
+            - name: DEFAULT_LLM_MODEL
+              value: "deepseek-v4.1-flash:1017-cloud"
+            - name: PIPER_MODEL_PATH
+              value: "/models/piper/zh_CN-huayan-medium.onnx"
+            - name: WHISPER_MODEL_DIR
+              value: "/models/faster-whisper-tiny"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
