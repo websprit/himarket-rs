@@ -1,4 +1,9 @@
-use axum::{Json, Router, routing::get};
+use axum::{
+    Json, Router,
+    http::{HeaderValue, header},
+    response::Html,
+    routing::get,
+};
 use himarket_access::{AccessState, access_router};
 use himarket_core::ApiResponse;
 use himarket_dal::DalRepo;
@@ -43,10 +48,23 @@ pub fn build_app(
 
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/", get(|| async { Html(include_str!("../../../web/index.html")) }))
+        .route("/admin", get(|| async { Html(include_str!("../../../web/admin.html")) }))
+        .route("/portal", get(|| async { Html(include_str!("../../../web/portal.html")) }))
+        .route("/console.js", get(console_js))
+        .route("/console.css", get(console_css))
         .merge(market_router(repo))
         .merge(access_router(access_state))
         .merge(metering_router(metering_state))
         .layer(cors)
+}
+
+async fn console_js() -> ([(header::HeaderName, HeaderValue); 1], &'static str) {
+    ([(header::CONTENT_TYPE, HeaderValue::from_static("text/javascript"))], include_str!("../../../web/console.js"))
+}
+
+async fn console_css() -> ([(header::HeaderName, HeaderValue); 1], &'static str) {
+    ([(header::CONTENT_TYPE, HeaderValue::from_static("text/css"))], include_str!("../../../web/console.css"))
 }
 
 async fn healthz() -> Json<ApiResponse<Value>> {

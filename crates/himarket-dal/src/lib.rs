@@ -14,6 +14,45 @@ pub struct DalRepo {
     pool: SqlitePool,
     key_cache: Arc<RwLock<HashMap<String, VerifiedBusinessKey>>>,
     session_cache: Arc<RwLock<HashMap<String, SessionIdentity>>>,
+    auth_sessions: Arc<RwLock<HashMap<String, AuthSession>>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthSession {
+    pub token: String,
+    pub role: String,
+    pub subject_id: String,
+    pub username: String,
+    pub portal_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKeyDto {
+    pub api_key_id: String,
+    pub tenant_id: String,
+    pub portal_id: String,
+    pub consumer_id: String,
+    pub status: String,
+    pub allowed_modes: String,
+    pub quota_used_usd_micros: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKeyCreated {
+    pub api_key_id: String,
+    pub raw_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionDto {
+    pub session_id: String,
+    pub room_name: String,
+    pub tenant_id: String,
+    pub api_key_id: String,
+    pub voice_mode: String,
+    pub llm_model: String,
+    pub state: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +111,7 @@ impl DalRepo {
             pool,
             key_cache: Arc::new(RwLock::new(HashMap::new())),
             session_cache: Arc::new(RwLock::new(HashMap::new())),
+            auth_sessions: Arc::new(RwLock::new(HashMap::new())),
         };
         repo.init_schema_and_seed().await?;
         Ok(repo)
@@ -209,6 +249,9 @@ impl DalRepo {
                 sqlx::query(trimmed).execute(&self.pool).await?;
             }
         }
+        let _ = sqlx::query("ALTER TABLE developer ADD COLUMN password_hash TEXT")
+            .execute(&self.pool)
+            .await;
 
         // Seed default Portal, Developer (Tenant), Consumer, Product, and Business API Key for immediate Android & E2E testing
         sqlx::query(
@@ -217,11 +260,25 @@ impl DalRepo {
         .execute(&self.pool)
         .await?;
 
+        let admin_hash = sha256_hex("admin123");
         sqlx::query(
-            "INSERT OR IGNORE INTO developer (developer_id, username, email, portal_id, status) VALUES ('tenant_ugreen_01', 'ugreen_voice_dev', 'voice@ugreen.com', 'portal_default', 'ACTIVE')",
+            "INSERT OR IGNORE INTO administrator (admin_id, username, password_hash) VALUES ('admin_01', 'admin', ?)",
         )
+        .bind(&admin_hash)
         .execute(&self.pool)
         .await?;
+
+        let developer_hash = sha256_hex("voice123");
+        sqlx::query(
+            "INSERT OR IGNORE INTO developer (developer_id, username, email, portal_id, status, password_hash) VALUES ('tenant_ugreen_01', 'ugreen_voice_dev', 'voice@ugreen.com', 'portal_default', 'ACTIVE', ?)",
+        )
+        .bind(&developer_hash)
+        .execute(&self.pool)
+        .await?;
+        sqlx::query("UPDATE developer SET password_hash = ? WHERE developer_id = 'tenant_ugreen_01' AND (password_hash IS NULL OR password_hash = '')")
+            .bind(&developer_hash)
+            .execute(&self.pool)
+            .await?;
 
         sqlx::query(
             "INSERT OR IGNORE INTO consumer (consumer_id, name, description, portal_id, developer_id) VALUES ('cons_android_app', 'Android Voice Intercom App', 'SM_F9460 LiveKit Voice AI Client', 'portal_default', 'tenant_ugreen_01')",
@@ -636,5 +693,148 @@ impl DalRepo {
                 developer_id: r.get("developer_id"),
             })
             .collect())
+    }
+
+    pub async fn login(&self, role: &str, username: &str, password: &str) -> Result<Option<AuthSession>> {
+        let hash = sha256_hex(password);
+        let found = if role == "admin" {
+            sqlx::query("SELECT admin_id, username FROM administrator WHERE username = ? AND password_hash = ?")
+                .bind(username)
+                .bind(&hash)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(|r| AuthSession {
+                    token: format!("hm_{}", uuid::Uuid::now_v7().simple()),
+                    role: "admin".into(),
+                    subject_id: r.get("admin_id"),
+                    username: r.get("username"),
+                    portal_id: None,
+                })
+        } else {
+            sqlx::query("SELECT developer_id, username, portal_id FROM developer WHERE username = ? AND password_hash = ? AND status = 'ACTIVE'")
+                .bind(username)
+                .bind(&hash)
+                .fetch_optional(&self.pool)
+                .await?
+                .map(|r| AuthSession {
+                    token: format!("hm_{}", uuid::Uuid::now_v7().simple()),
+                    role: "developer".into(),
+                    subject_id: r.get("developer_id"),
+                    username: r.get("username"),
+                    portal_id: Some(r.get("portal_id")),
+                })
+        };
+        if let Some(session) = &found {
+            self.auth_sessions.write().await.insert(session.token.clone(), session.clone());
+        }
+        Ok(found)
+    }
+
+    pub async fn auth_session(&self, token: &str) -> Option<AuthSession> {
+        self.auth_sessions.read().await.get(token).cloned()
+    }
+
+    pub async fn create_portal(&self, name: &str, description: Option<&str>) -> Result<PortalDto> {
+        let portal_id = format!("portal_{}", uuid::Uuid::now_v7().simple());
+        sqlx::query("INSERT INTO portal (portal_id, name, description, admin_id) VALUES (?, ?, ?, 'admin_01')")
+            .bind(&portal_id)
+            .bind(name)
+            .bind(description)
+            .execute(&self.pool)
+            .await?;
+        Ok(PortalDto { portal_id, name: name.into(), description: description.map(|s| s.into()) })
+    }
+
+    pub async fn create_product(&self, name: &str, product_type: &str, description: Option<&str>) -> Result<ProductDto> {
+        let product_id = format!("prod_{}", uuid::Uuid::now_v7().simple());
+        sqlx::query("INSERT INTO product (product_id, name, type, description, status) VALUES (?, ?, ?, ?, 'PUBLISHED')")
+            .bind(&product_id)
+            .bind(name)
+            .bind(product_type)
+            .bind(description)
+            .execute(&self.pool)
+            .await?;
+        Ok(ProductDto {
+            product_id,
+            name: name.into(),
+            product_type: product_type.into(),
+            description: description.map(|s| s.into()),
+            status: "PUBLISHED".into(),
+        })
+    }
+
+    pub async fn create_consumer(&self, name: &str, portal_id: &str, developer_id: &str, description: Option<&str>) -> Result<ConsumerDto> {
+        let consumer_id = format!("cons_{}", uuid::Uuid::now_v7().simple());
+        sqlx::query("INSERT INTO consumer (consumer_id, name, description, portal_id, developer_id) VALUES (?, ?, ?, ?, ?)")
+            .bind(&consumer_id)
+            .bind(name)
+            .bind(description)
+            .bind(portal_id)
+            .bind(developer_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(ConsumerDto { consumer_id, name: name.into(), portal_id: portal_id.into(), developer_id: developer_id.into() })
+    }
+
+    pub async fn create_api_key(&self, consumer_id: &str) -> Result<ApiKeyCreated> {
+        let consumer = sqlx::query("SELECT portal_id, developer_id FROM consumer WHERE consumer_id = ?")
+            .bind(consumer_id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("consumer not found"))?;
+        let raw_key = format!("hm_ak_{}", uuid::Uuid::now_v7().simple());
+        let api_key_id = format!("ak_{}", &raw_key[6..18]);
+        sqlx::query(
+            "INSERT INTO voice_api_key_binding (api_key_id, api_key_sha256, tenant_id, portal_id, consumer_id, status, allowed_modes, rate_limit_rpm, quota_limit_usd_micros, quota_used_usd_micros)
+             VALUES (?, ?, ?, ?, ?, 'ACTIVE', 'realtime,cascade', 120, 100000000, 0)",
+        )
+        .bind(&api_key_id)
+        .bind(sha256_hex(&raw_key))
+        .bind(consumer.get::<String, _>("developer_id"))
+        .bind(consumer.get::<String, _>("portal_id"))
+        .bind(consumer_id)
+        .execute(&self.pool)
+        .await?;
+        self.key_cache.write().await.clear();
+        Ok(ApiKeyCreated { api_key_id, raw_key })
+    }
+
+    pub async fn list_api_keys(&self, tenant_id: Option<&str>) -> Result<Vec<ApiKeyDto>> {
+        let rows = if let Some(tid) = tenant_id {
+            sqlx::query("SELECT api_key_id, tenant_id, portal_id, consumer_id, status, allowed_modes, quota_used_usd_micros FROM voice_api_key_binding WHERE tenant_id = ? ORDER BY id DESC")
+                .bind(tid).fetch_all(&self.pool).await?
+        } else {
+            sqlx::query("SELECT api_key_id, tenant_id, portal_id, consumer_id, status, allowed_modes, quota_used_usd_micros FROM voice_api_key_binding ORDER BY id DESC")
+                .fetch_all(&self.pool).await?
+        };
+        Ok(rows.into_iter().map(|r| ApiKeyDto {
+            api_key_id: r.get("api_key_id"),
+            tenant_id: r.get("tenant_id"),
+            portal_id: r.get("portal_id"),
+            consumer_id: r.get("consumer_id"),
+            status: r.get("status"),
+            allowed_modes: r.get("allowed_modes"),
+            quota_used_usd_micros: r.get("quota_used_usd_micros"),
+        }).collect())
+    }
+
+    pub async fn list_voice_sessions(&self, tenant_id: Option<&str>) -> Result<Vec<VoiceSessionDto>> {
+        let rows = if let Some(tid) = tenant_id {
+            sqlx::query("SELECT session_id, room_name, tenant_id, api_key_id, voice_mode, llm_model, state, created_at FROM voice_session_record WHERE tenant_id = ? ORDER BY id DESC LIMIT 100")
+                .bind(tid).fetch_all(&self.pool).await?
+        } else {
+            sqlx::query("SELECT session_id, room_name, tenant_id, api_key_id, voice_mode, llm_model, state, created_at FROM voice_session_record ORDER BY id DESC LIMIT 100")
+                .fetch_all(&self.pool).await?
+        };
+        Ok(rows.into_iter().map(|r| VoiceSessionDto {
+            session_id: r.get("session_id"),
+            room_name: r.get("room_name"),
+            tenant_id: r.get("tenant_id"),
+            api_key_id: r.get("api_key_id"),
+            voice_mode: r.get("voice_mode"),
+            llm_model: r.get("llm_model"),
+            state: r.get("state"),
+            created_at: r.get("created_at"),
+        }).collect())
     }
 }

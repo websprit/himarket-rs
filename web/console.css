@@ -1,0 +1,13 @@
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; background: #f5f7fb; color: #0f172a; }
+header { display: flex; gap: 16px; align-items: center; padding: 16px 24px; background: white; border-bottom: 1px solid #e2e8f0; }
+header span, header a { color: #64748b; font-size: 14px; }
+nav { display: flex; gap: 8px; padding: 16px 24px 0; }
+nav button, button { border: 0; background: #e2e8f0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+nav button.active, button { background: #2563eb; color: white; }
+section, .card { margin: 16px 24px; background: white; border-radius: 14px; padding: 16px; }
+form { display: flex; gap: 8px; margin-bottom: 12px; }
+input, select { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: 8px; }
+.error { color: #be123c; }
+pre { white-space: pre-wrap; }

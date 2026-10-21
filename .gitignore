@@ -5,3 +5,5 @@
 *.db-wal
 .DS_Store
 .env
+
+.image/

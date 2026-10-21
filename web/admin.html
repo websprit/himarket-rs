@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HiMarket 管理后台</title>
+  <link rel="stylesheet" href="/console.css" />
+</head>
+<body>
+  <header>
+    <strong>HiMarket 管理后台</strong>
+    <span id="who">未登录</span>
+    <a href="/portal">开发者门户</a>
+  </header>
+  <div id="login" class="card">
+    <h2>管理员登录</h2>
+    <input id="username" value="admin" />
+    <input id="password" type="password" value="admin123" />
+    <button id="login-btn">登录</button>
+    <p id="login-error" class="error"></p>
+  </div>
+  <div id="app" hidden>
+    <nav>
+      <button data-panel="portals" class="active">门户</button>
+      <button data-panel="products">产品</button>
+      <button data-panel="consumers">调用方</button>
+      <button data-panel="keys">API Key</button>
+      <button data-panel="sessions">语音会话</button>
+      <button data-panel="usage">用量</button>
+    </nav>
+    <section data-panel="portals">
+      <form id="portal-form"><input name="name" placeholder="门户名称" required /><input name="description" placeholder="说明" /><button>新建门户</button></form>
+      <div id="portals"></div>
+    </section>
+    <section data-panel="products" hidden>
+      <form id="product-form"><input name="name" placeholder="产品名称" required /><select name="product_type"><option>AGENT_API</option><option>MODEL_API</option><option>REST_API</option><option>MCP_SERVER</option><option>AGENT_SKILL</option><option>WORKER</option></select><button>发布产品</button></form>
+      <div id="products"></div>
+    </section>
+    <section data-panel="consumers" hidden>
+      <form id="consumer-form"><input name="name" placeholder="调用方名称" required /><input name="developer_id" placeholder="开发者 ID，默认 tenant_ugreen_01" /><button>新建调用方</button></form>
+      <div id="consumers"></div>
+    </section>
+    <section data-panel="keys" hidden>
+      <form id="key-form"><input name="consumer_id" placeholder="调用方 ID" required /><button>签发 API Key</button></form>
+      <p id="new-key"></p>
+      <div id="keys"></div>
+    </section>
+    <section data-panel="sessions" hidden><div id="sessions"></div></section>
+    <section data-panel="usage" hidden><div id="usage"></div></section>
+  </div>
+  <script src="/console.js"></script>
+  <script>
+    document.querySelectorAll("nav button").forEach((button) => button.onclick = () => { show(button.dataset.panel); load(button.dataset.panel); });
+    document.getElementById("login-btn").onclick = async () => {
+      try {
+        const session = await api("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ role: "admin", username: username.value, password: password.value }) });
+        localStorage.setItem(tokenKey, session.token);
+        enter(session);
+      } catch (error) { document.getElementById("login-error").textContent = error.message; }
+    };
+    function enter(session) {
+      login.hidden = true; app.hidden = false; who.textContent = session.username;
+      load("portals");
+    }
+    async function load(panel) {
+      if (panel === "portals") portals.innerHTML = table([["ID", r => r.portal_id], ["名称", r => r.name], ["说明", r => r.description || ""]], await api("/api/v1/portals"));
+      if (panel === "products") products.innerHTML = table([["ID", r => r.product_id], ["名称", r => r.name], ["类型", r => r.product_type], ["状态", r => r.status]], await api("/api/v1/products"));
+      if (panel === "consumers") consumers.innerHTML = table([["ID", r => r.consumer_id], ["名称", r => r.name], ["开发者", r => r.developer_id]], await api("/api/v1/consumers"));
+      if (panel === "keys") keys.innerHTML = table([["Key ID", r => r.api_key_id], ["调用方", r => r.consumer_id], ["租户", r => r.tenant_id], ["已用微美元", r => r.quota_used_usd_micros]], await api("/api/v1/api-keys"));
+      if (panel === "sessions") sessions.innerHTML = table([["会话", r => r.session_id], ["房间", r => r.room_name], ["模式", r => r.voice_mode], ["模型", r => r.llm_model], ["状态", r => r.state]], await api("/api/v1/voice/sessions"));
+      if (panel === "usage") {
+        const data = await api("/api/v1/usage/summary?tenant_id=tenant_ugreen_01");
+        usage.innerHTML = "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
+      }
+    }
+    document.getElementById("portal-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/portals", { method: "POST", body: JSON.stringify({ name: form.name.value, description: form.description.value }) }); load("portals"); };
+    document.getElementById("product-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/products", { method: "POST", body: JSON.stringify({ name: form.name.value, product_type: form.product_type.value }) }); load("products"); };
+    document.getElementById("consumer-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/consumers", { method: "POST", body: JSON.stringify({ name: form.name.value, developer_id: form.developer_id.value || "tenant_ugreen_01" }) }); load("consumers"); };
+    document.getElementById("key-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; const created = await api("/api/v1/api-keys", { method: "POST", body: JSON.stringify({ consumer_id: form.consumer_id.value }) }); document.getElementById("new-key").textContent = "新密钥只显示一次：" + created.raw_key; load("keys"); };
+    if (localStorage.getItem(tokenKey)) api("/api/v1/auth/me").then(enter).catch(() => localStorage.removeItem(tokenKey));
+  </script>
+</body>
+</html>
