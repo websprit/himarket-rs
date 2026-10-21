@@ -1218,5 +1218,175 @@
     "model": "zh_CN-huayan-medium",
     "voice": "/models/piper/zh_CN-huayan-medium.onnx",
     "provider": "Local"
+  },
+  {
+    "config_id": "vendor-llm-openai_chat-qwen3-8-max",
+    "name": "阿里云 Qwen3.8-Max",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "qwen3.8-max",
+    "voice": "",
+    "provider": "Alibaba DashScope"
+  },
+  {
+    "config_id": "vendor-llm-openai_chat-doubao-seed-2-1-pro-260915",
+    "name": "火山 Doubao-Seed-2.1-Pro",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "model": "doubao-seed-2-1-pro-260915",
+    "voice": "",
+    "provider": "Volcengine Ark"
+  },
+  {
+    "config_id": "vendor-llm-openai_chat-gpt-5-6-sol",
+    "name": "Azure GPT-5.6 Sol",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://{resource}.openai.azure.com/openai/v1",
+    "model": "gpt-5.6-sol",
+    "voice": "",
+    "provider": "Azure OpenAI"
+  },
+  {
+    "config_id": "vendor-llm-openai_chat-gemini-3-8-flash",
+    "name": "Gemini 3.8 Flash",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-3.8-flash",
+    "voice": "",
+    "provider": "Google Gemini"
+  },
+  {
+    "config_id": "vendor-llm-openai_chat-gemini-4-argon",
+    "name": "Gemini 4 Argon",
+    "kind": "llm",
+    "protocol": "openai_chat",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "model": "gemini-4-argon",
+    "voice": "",
+    "provider": "Google Gemini"
+  },
+  {
+    "config_id": "vendor-stt-openai_stt-gpt-4o-transcribe",
+    "name": "Azure GPT-4o Transcribe",
+    "kind": "stt",
+    "protocol": "openai_stt",
+    "base_url": "https://{resource}.openai.azure.com/openai/v1",
+    "model": "gpt-4o-transcribe",
+    "voice": "",
+    "provider": "Azure OpenAI"
+  },
+  {
+    "config_id": "vendor-stt-google_stt-chirp_3",
+    "name": "Google Chirp 3",
+    "kind": "stt",
+    "protocol": "google_stt",
+    "base_url": "https://speech.googleapis.com",
+    "model": "chirp_3",
+    "voice": "global",
+    "provider": "Google Cloud"
+  },
+  {
+    "config_id": "vendor-stt-dashscope_stt-qwen-audio-3-1-asr-flash-streaming",
+    "name": "阿里云 Qwen-Audio ASR",
+    "kind": "stt",
+    "protocol": "dashscope_stt",
+    "base_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+    "model": "qwen-audio-3.1-asr-flash-streaming",
+    "voice": "",
+    "provider": "Alibaba DashScope"
+  },
+  {
+    "config_id": "vendor-stt-volcengine_stt-volc-seedasr-sauc-duration",
+    "name": "豆包流式识别 2.0",
+    "kind": "stt",
+    "protocol": "volcengine_stt",
+    "base_url": "wss://openspeech.bytedance.com/api/v3/sauc",
+    "model": "volc.seedasr.sauc.duration",
+    "voice": "",
+    "provider": "Volcengine"
+  },
+  {
+    "config_id": "vendor-tts-azure_tts-mai-voice-2-1",
+    "name": "Azure MAI-Voice-2.1",
+    "kind": "tts",
+    "protocol": "azure_tts",
+    "base_url": "https://{region}.tts.speech.microsoft.com",
+    "model": "mai-voice-2.1",
+    "voice": "MAI-Voice-2.1",
+    "provider": "Azure Speech"
+  },
+  {
+    "config_id": "vendor-tts-google_tts-gemini-3-8-flash-tts",
+    "name": "Gemini 3.8 Flash TTS",
+    "kind": "tts",
+    "protocol": "google_tts",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "model": "gemini-3.8-flash-tts",
+    "voice": "",
+    "provider": "Google Gemini"
+  },
+  {
+    "config_id": "vendor-tts-dashscope_tts-qwen-audio-3-1-tts-flash",
+    "name": "阿里云 Qwen-Audio TTS",
+    "kind": "tts",
+    "protocol": "dashscope_tts",
+    "base_url": "https://dashscope.aliyuncs.com/api/v1",
+    "model": "qwen-audio-3.1-tts-flash",
+    "voice": "Cherry",
+    "provider": "Alibaba DashScope"
+  },
+  {
+    "config_id": "vendor-tts-volcengine_tts-seed-tts-2-0",
+    "name": "豆包语音合成 2.0",
+    "kind": "tts",
+    "protocol": "volcengine_tts",
+    "base_url": "https://openspeech.bytedance.com/api/v1/tts",
+    "model": "seed-tts-2.0",
+    "voice": "",
+    "provider": "Volcengine"
+  },
+  {
+    "config_id": "vendor-realtime-google_realtime-gemini-3-8-live",
+    "name": "Gemini 3.8 Live",
+    "kind": "realtime",
+    "protocol": "google_realtime",
+    "base_url": "wss://generativelanguage.googleapis.com",
+    "model": "gemini-3.8-live",
+    "voice": "",
+    "provider": "Google Gemini"
+  },
+  {
+    "config_id": "vendor-realtime-openai_realtime-gpt-realtime-2-1",
+    "name": "Azure GPT-Realtime 2.1",
+    "kind": "realtime",
+    "protocol": "openai_realtime",
+    "base_url": "wss://{resource}.openai.azure.com/openai/realtime",
+    "model": "gpt-realtime-2.1",
+    "voice": "",
+    "provider": "Azure OpenAI"
+  },
+  {
+    "config_id": "vendor-realtime-dashscope_realtime-qwen3-8-omni-flash-realtime",
+    "name": "阿里云 Qwen Omni Realtime",
+    "kind": "realtime",
+    "protocol": "dashscope_realtime",
+    "base_url": "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+    "model": "qwen3.8-omni-flash-realtime",
+    "voice": "",
+    "provider": "Alibaba DashScope"
+  },
+  {
+    "config_id": "vendor-realtime-volcengine_realtime-doubao-realtime-3-0",
+    "name": "豆包实时语音 3.0",
+    "kind": "realtime",
+    "protocol": "volcengine_realtime",
+    "base_url": "wss://openspeech.bytedance.com/api/v3/realtime",
+    "model": "doubao-realtime-3.0",
+    "voice": "",
+    "provider": "Volcengine"
   }
 ]

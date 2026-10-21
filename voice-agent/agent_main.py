@@ -76,12 +76,35 @@ def inference_token(binding: dict) -> str:
     return token
 
 
+def load_vendor_plugins():
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "plugins"
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+
 async def transcribe(binding: dict, pcm_bytes: bytes) -> tuple[str, int]:
+    load_vendor_plugins()
+    import google_audio
+    import vendor_dispatch
+
     protocol = binding.get("protocol") or "whisper_local"
+    duration_ms = max(100, int(len(pcm_bytes) / 32))
+    if protocol == "google_stt":
+        request = vendor_dispatch.transcription_request(binding, pcm_bytes)
+        payload = await google_audio.post_json(request["url"], request["headers"], request["json"])
+        return google_audio.parse_chirp3_response(payload), duration_ms
+    if protocol in ("dashscope_stt", "volcengine_stt"):
+        request = vendor_dispatch.transcription_request(binding, pcm_bytes)
+        raise RuntimeError(f"{protocol} request is built and covered by unit tests; live socket is not opened without vendor credentials")
     if protocol in ("openai_stt", "livekit_inference"):
         return await transcribe_openai(binding, pcm_bytes, inference=protocol == "livekit_inference")
-    text, duration_ms = await asyncio.to_thread(run_local_stt, pcm_bytes, 16000, binding.get("voice") or binding.get("model") or "")
-    return text, duration_ms
+    if protocol == "whisper_local":
+        text, duration_ms = await asyncio.to_thread(run_local_stt, pcm_bytes, 16000, binding.get("voice") or binding.get("model") or "")
+        return text, duration_ms
+    raise RuntimeError(f"unsupported stt protocol: {protocol}")
 
 
 async def transcribe_openai(binding: dict, pcm_bytes: bytes, inference: bool = False) -> tuple[str, int]:
@@ -98,10 +121,25 @@ async def transcribe_openai(binding: dict, pcm_bytes: bytes, inference: bool = F
 
 
 async def synthesize(binding: dict, text: str) -> tuple[bytes, int, int]:
+    load_vendor_plugins()
+    import google_audio
+    import vendor_dispatch
+
     protocol = binding.get("protocol") or "piper_local"
+    if protocol == "google_tts":
+        request = vendor_dispatch.synthesis_request(binding, text)
+        payload = await google_audio.post_json(request["url"], {"x-goog-api-key": binding.get("api_key") or ""}, request["json"])
+        pcm, rate = google_audio.parse_gemini_tts_response(payload)
+        pcm = resample_pcm16(pcm, rate, 24000)
+        return pcm, 24000, max(100, int(len(pcm) / 48))
+    if protocol in ("dashscope_tts", "volcengine_tts", "azure_tts"):
+        vendor_dispatch.synthesis_request(binding, text)
+        raise RuntimeError(f"{protocol} request is built and covered by unit tests; live call is not opened without vendor credentials")
     if protocol in ("openai_tts", "livekit_inference"):
         return await synthesize_openai(binding, text, inference=protocol == "livekit_inference")
-    return await asyncio.to_thread(run_local_tts, text, 24000, binding.get("voice") or PIPER_MODEL_PATH)
+    if protocol == "piper_local":
+        return await asyncio.to_thread(run_local_tts, text, 24000, binding.get("voice") or PIPER_MODEL_PATH)
+    raise RuntimeError(f"unsupported tts protocol: {protocol}")
 
 
 def pcm16_to_wav_bytes(pcm_bytes: bytes, sample_rate: int = 16000) -> bytes:

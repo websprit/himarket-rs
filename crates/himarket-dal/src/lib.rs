@@ -52,6 +52,7 @@ pub struct ModelConfig {
     pub base_url: String,
     pub api_key: String,
     pub api_secret: String,
+    pub extra_json: String,
     pub model: String,
     pub voice: String,
     pub is_default: bool,
@@ -245,6 +246,7 @@ impl DalRepo {
             base_url TEXT NOT NULL DEFAULT '',
             api_key TEXT NOT NULL DEFAULT '',
             api_secret TEXT NOT NULL DEFAULT '',
+            extra_json TEXT NOT NULL DEFAULT '{}',
             model TEXT NOT NULL,
             voice TEXT NOT NULL DEFAULT '',
             is_default INTEGER NOT NULL DEFAULT 0,
@@ -283,6 +285,9 @@ impl DalRepo {
             .execute(&self.pool)
             .await;
         let _ = sqlx::query("ALTER TABLE ai_model_config ADD COLUMN api_secret TEXT NOT NULL DEFAULT ''")
+            .execute(&self.pool)
+            .await;
+        let _ = sqlx::query("ALTER TABLE ai_model_config ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}'")
             .execute(&self.pool)
             .await;
         self.seed_livekit_catalog().await?;
@@ -886,7 +891,7 @@ impl DalRepo {
         if is_default {
             sqlx::query("UPDATE ai_model_config SET is_default = 0 WHERE kind = ?").bind(kind).execute(&self.pool).await?;
         }
-        sqlx::query("INSERT INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE')")
+        sqlx::query("INSERT INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status) VALUES (?, ?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, 'ACTIVE')")
             .bind(config_id).bind(name).bind(kind).bind(protocol).bind(base_url).bind(api_key).bind(api_secret).bind(model).bind(voice).bind(if is_default { 1 } else { 0 })
             .execute(&self.pool).await?;
         Ok(())
@@ -913,15 +918,15 @@ impl DalRepo {
 
     pub async fn list_model_configs(&self, kind: Option<&str>) -> Result<Vec<ModelConfig>> {
         let rows = if let Some(kind) = kind {
-            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE kind = ? ORDER BY is_default DESC, name").bind(kind).fetch_all(&self.pool).await?
+            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status FROM ai_model_config WHERE kind = ? ORDER BY is_default DESC, name").bind(kind).fetch_all(&self.pool).await?
         } else {
-            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config ORDER BY kind, is_default DESC, name").fetch_all(&self.pool).await?
+            sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status FROM ai_model_config ORDER BY kind, is_default DESC, name").fetch_all(&self.pool).await?
         };
         Ok(rows.into_iter().map(model_config_from_row).collect())
     }
 
     pub async fn get_model_config(&self, config_id: &str) -> Result<Option<ModelConfig>> {
-        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE config_id = ?")
+        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status FROM ai_model_config WHERE config_id = ?")
             .bind(config_id).fetch_optional(&self.pool).await?.map(model_config_from_row))
     }
 
@@ -939,12 +944,12 @@ impl DalRepo {
 
     pub async fn resolve_model_config(&self, kind: &str, requested: Option<&str>) -> Result<Option<ModelConfig>> {
         if let Some(name) = requested.map(str::trim).filter(|v| !v.is_empty()) {
-            if let Some(found) = sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND (config_id = ? OR model = ? OR name = ?) ORDER BY is_default DESC LIMIT 1")
+            if let Some(found) = sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND (config_id = ? OR model = ? OR name = ?) ORDER BY is_default DESC LIMIT 1")
                 .bind(kind).bind(name).bind(name).bind(name).fetch_optional(&self.pool).await? {
                 return Ok(Some(model_config_from_row(found)));
             }
         }
-        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND is_default = 1 LIMIT 1")
+        Ok(sqlx::query("SELECT config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status FROM ai_model_config WHERE status = 'ACTIVE' AND kind = ? AND is_default = 1 LIMIT 1")
             .bind(kind).fetch_optional(&self.pool).await?.map(model_config_from_row))
     }
 
@@ -952,8 +957,8 @@ impl DalRepo {
         let catalog: Vec<serde_json::Value> = serde_json::from_str(include_str!("../../../catalog/livekit_models.json"))?;
         for item in catalog {
             sqlx::query(
-                "INSERT OR IGNORE INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, model, voice, is_default, status)
-                 VALUES (?, ?, ?, ?, ?, '', '', ?, ?, 0, 'ACTIVE')",
+                "INSERT OR IGNORE INTO ai_model_config (config_id, name, kind, protocol, base_url, api_key, api_secret, extra_json, model, voice, is_default, status)
+                 VALUES (?, ?, ?, ?, ?, '', '', '{}', ?, ?, 0, 'ACTIVE')",
             )
             .bind(item["config_id"].as_str().unwrap_or_default())
             .bind(item["name"].as_str().unwrap_or_default())
@@ -1002,6 +1007,7 @@ fn model_config_from_row(row: sqlx::sqlite::SqliteRow) -> ModelConfig {
         base_url: row.get("base_url"),
         api_key: row.get("api_key"),
         api_secret: row.get("api_secret"),
+        extra_json: row.get("extra_json"),
         model: row.get("model"),
         voice: row.get("voice"),
         is_default: row.get::<i64, _>("is_default") == 1,

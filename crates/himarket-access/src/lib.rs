@@ -75,6 +75,8 @@ pub struct ModelBinding {
     pub base_url: String,
     pub api_key: String,
     pub api_secret: String,
+    #[serde(default)]
+    pub extra_json: String,
     pub model: String,
     pub voice: String,
 }
@@ -87,6 +89,7 @@ impl From<ModelConfig> for ModelBinding {
             base_url: config.base_url,
             api_key: config.api_key,
             api_secret: config.api_secret,
+            extra_json: config.extra_json,
             model: config.model,
             voice: config.voice,
         }
