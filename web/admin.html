@@ -48,7 +48,15 @@
     </section>
     <section data-panel="sessions" hidden><div id="sessions"></div></section>
     <section data-panel="models" hidden>
+      <form id="lang-policy-form">
+        <input name="tenant_id" placeholder="租户 ID" value="tenant_ugreen_01" required />
+        <input name="default_target_lang" placeholder="默认目标语言，如 zh" value="zh" required />
+        <input name="allowed_langs" placeholder="允许语言列表，逗号分隔" value="zh,en,ja,ko" required />
+        <button>保存租户语言策略</button>
+      </form>
+      <p id="lang-policy-view"></p>
       <form id="model-form">
+        <input name="tenant_id" placeholder="租户 ID" value="tenant_ugreen_01" required />
         <input name="name" placeholder="名称" required />
         <select name="kind"><option value="llm">LLM</option><option value="stt">STT</option><option value="tts">TTS</option></select>
         <select name="protocol"><option value="livekit_inference">LiveKit Inference</option><option value="livekit_realtime">LiveKit Realtime</option><option value="openai_chat">OpenAI Chat</option><option value="openai_stt">OpenAI STT</option><option value="openai_tts">OpenAI TTS</option><option value="openai_realtime">OpenAI Realtime</option><option value="google_stt">Google Chirp</option><option value="google_tts">Google Gemini TTS</option><option value="google_realtime">Google Gemini Live</option><option value="azure_tts">Azure Speech</option><option value="dashscope_stt">阿里云 ASR</option><option value="dashscope_tts">阿里云 TTS</option><option value="dashscope_realtime">阿里云 Realtime</option><option value="volcengine_stt">火山 ASR</option><option value="volcengine_tts">火山 TTS</option><option value="volcengine_realtime">火山 Realtime</option><option value="whisper_local">本地 Whisper</option><option value="piper_local">本地 Piper</option></select>
@@ -57,6 +65,8 @@
         <input name="api_secret" placeholder="API Secret（LiveKit Inference 需要）" />
         <input name="model" placeholder="模型名" required />
         <input name="voice" placeholder="音色或本地模型路径" />
+        <input name="tts_languages" placeholder="适用TTS语言，逗号分隔（可选）" />
+        <input name="stt_languages" placeholder="适用STT语言，逗号分隔（可选）" />
         <label><input name="is_default" type="checkbox" /> 设为默认</label>
         <button>保存配置</button>
       </form>
@@ -67,12 +77,19 @@
         <input name="api_secret" placeholder="写入 API Secret" />
         <button>保存密钥</button>
       </form>
+      <form id="model-lang-form">
+        <input name="config_id" placeholder="配置 ID" required />
+        <select name="lang_kind"><option value="tts">TTS 适用语言</option><option value="stt">STT 适用语言</option></select>
+        <input name="languages" placeholder="语言标签，逗号分隔，如 zh,en,ja" />
+        <button>保存模型适用语言</button>
+      </form>
       <div id="models"></div>
     </section>
     <section data-panel="usage" hidden><div id="usage"></div></section>
   </div>
   <script src="/console.js"></script>
   <script>
+    const splitCsv = (val) => (val || "").split(",").map(s => s.trim()).filter(Boolean);
     document.querySelectorAll("nav button").forEach((button) => button.onclick = () => { show(button.dataset.panel); load(button.dataset.panel); });
     document.getElementById("login-btn").onclick = async () => {
       try {
@@ -90,11 +107,29 @@
       if (panel === "products") products.innerHTML = table([["ID", r => r.product_id], ["名称", r => r.name], ["类型", r => r.product_type], ["状态", r => r.status]], await api("/api/v1/products"));
       if (panel === "consumers") consumers.innerHTML = table([["ID", r => r.consumer_id], ["名称", r => r.name], ["开发者", r => r.developer_id]], await api("/api/v1/consumers"));
       if (panel === "keys") keys.innerHTML = table([["Key ID", r => r.api_key_id], ["调用方", r => r.consumer_id], ["租户", r => r.tenant_id], ["已用微美元", r => r.quota_used_usd_micros]], await api("/api/v1/api-keys"));
-      if (panel === "sessions") sessions.innerHTML = table([["会话", r => r.session_id], ["房间", r => r.room_name], ["模式", r => r.voice_mode], ["模型", r => r.llm_model], ["状态", r => r.state]], await api("/api/v1/voice/sessions"));
+      if (panel === "sessions") sessions.innerHTML = table([
+        ["会话", r => r.session_id],
+        ["房间", r => r.room_name || ""],
+        ["模式", r => r.voice_mode],
+        ["任务", r => r.task || "cascade"],
+        ["源语言", r => r.source_lang || ""],
+        ["目标语言", r => r.target_lang || ""],
+        ["标题", r => r.title || ""],
+        ["模型", r => r.llm_model || ""],
+        ["状态", r => r.state]
+      ], await api("/api/v1/voice/sessions"));
       if (panel === "models") {
-        const rows = await api("/api/v1/model-configs");
+        const tenant = document.querySelector("#model-form [name=tenant_id]").value || "tenant_ugreen_01";
+        try {
+          const policy = await api("/api/v1/tenant-language-policy?tenant_id=" + encodeURIComponent(tenant));
+          document.getElementById("lang-policy-view").textContent = `当前租户(${policy.tenant_id})语言策略：默认 ${policy.default_target_lang}，允许 [${(policy.allowed_langs || []).join(", ")}]`;
+        } catch (err) {
+          document.getElementById("lang-policy-view").textContent = err.message;
+        }
+        const rows = await api("/api/v1/model-configs?tenant_id=" + encodeURIComponent(tenant));
         models.innerHTML = table([
-          ["名称", r => r.name], ["类型", r => r.kind], ["协议", r => r.protocol], ["模型", r => r.model],
+          ["ID", r => r.config_id], ["租户", r => r.tenant_id], ["名称", r => r.name], ["类型", r => r.kind], ["协议", r => r.protocol], ["模型", r => r.model],
+          ["TTS语言", r => (r.tts_languages || []).join(",")], ["STT语言", r => (r.stt_languages || []).join(",")],
           ["地址", r => r.base_url], ["密钥", r => r.api_key_hint], ["Secret", r => r.has_api_secret ? "已设置" : ""], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status],
           ["操作", r => r.status === "ACTIVE" ? `<button data-default="${r.config_id}">默认</button> <button data-disable="${r.config_id}">停用</button>` : ""]
         ], rows);
@@ -110,10 +145,41 @@
     document.getElementById("product-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/products", { method: "POST", body: JSON.stringify({ name: form.name.value, product_type: form.product_type.value }) }); load("products"); };
     document.getElementById("consumer-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/consumers", { method: "POST", body: JSON.stringify({ name: form.name.value, developer_id: form.developer_id.value || "tenant_ugreen_01" }) }); load("consumers"); };
     document.getElementById("key-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; const created = await api("/api/v1/api-keys", { method: "POST", body: JSON.stringify({ consumer_id: form.consumer_id.value }) }); document.getElementById("new-key").textContent = "新密钥只显示一次：" + created.raw_key; load("keys"); };
+    document.getElementById("lang-policy-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      await api("/api/v1/tenant-language-policy", {
+        method: "PUT",
+        body: JSON.stringify({
+          tenant_id: form.tenant_id.value,
+          default_target_lang: form.default_target_lang.value,
+          allowed_langs: splitCsv(form.allowed_langs.value)
+        })
+      });
+      load("models");
+    };
     document.getElementById("model-form").onsubmit = async (event) => {
       event.preventDefault();
       const form = event.target;
-      await api("/api/v1/model-configs", { method: "POST", body: JSON.stringify({ name: form.name.value, kind: form.kind.value, protocol: form.protocol.value, base_url: form.base_url.value, api_key: form.api_key.value, api_secret: form.api_secret.value, model: form.model.value, voice: form.voice.value, is_default: form.is_default.checked }) });
+      const ttsLangs = splitCsv(form.tts_languages.value);
+      const sttLangs = splitCsv(form.stt_languages.value);
+      await api("/api/v1/model-configs", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: form.tenant_id.value,
+          name: form.name.value,
+          kind: form.kind.value,
+          protocol: form.protocol.value,
+          base_url: form.base_url.value,
+          api_key: form.api_key.value,
+          api_secret: form.api_secret.value,
+          model: form.model.value,
+          voice: form.voice.value,
+          is_default: form.is_default.checked,
+          tts_languages: ttsLangs.length ? ttsLangs : undefined,
+          stt_languages: sttLangs.length ? sttLangs : undefined
+        })
+      });
       form.reset();
       load("models");
     };
@@ -121,6 +187,17 @@
       event.preventDefault();
       const form = event.target;
       await api("/api/v1/model-configs/" + form.config_id.value + "/credentials", { method: "POST", body: JSON.stringify({ base_url: form.base_url.value, api_key: form.api_key.value, api_secret: form.api_secret.value }) });
+      form.reset();
+      load("models");
+    };
+    document.getElementById("model-lang-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const langs = splitCsv(form.languages.value);
+      const kind = form.lang_kind.value;
+      const path = kind === "stt" ? "/stt-languages" : "/tts-languages";
+      const payload = kind === "stt" ? { stt_languages: langs } : { tts_languages: langs };
+      await api("/api/v1/model-configs/" + form.config_id.value + path, { method: "POST", body: JSON.stringify(payload) });
       form.reset();
       load("models");
     };

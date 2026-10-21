@@ -1,19 +1,20 @@
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     routing::{get, post},
 };
-use himarket_core::{ApiResponse, AppError, UsageSummaryResponse};
+use himarket_core::{ApiResponse, AppError, TenantLanguagePolicy, UsageSummaryResponse};
 use himarket_dal::{
     ApiKeyCreated, ApiKeyDto, AuthSession, ConsumerDto, DalRepo, ModelConfig, PortalDto,
-    ProductDto, VoiceSessionDto,
+    ProductDto, VoiceSessionDto, parse_extra_lang_list,
 };
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct UsageQueryParams {
     pub tenant_id: Option<String>,
+    pub kind: Option<String>,
     pub api_key_id: Option<String>,
 }
 
@@ -47,6 +48,7 @@ pub struct CredentialsRequest {
 
 #[derive(Deserialize)]
 pub struct ModelConfigRequest {
+    pub tenant_id: Option<String>,
     pub name: String,
     pub kind: String,
     pub protocol: String,
@@ -56,11 +58,31 @@ pub struct ModelConfigRequest {
     pub model: String,
     pub voice: Option<String>,
     pub is_default: Option<bool>,
+    pub tts_languages: Option<Vec<String>>,
+    pub stt_languages: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateTtsLanguagesRequest {
+    pub tts_languages: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateSttLanguagesRequest {
+    pub stt_languages: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UpsertTenantLanguagePolicyRequest {
+    pub tenant_id: String,
+    pub default_target_lang: String,
+    pub allowed_langs: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
 pub struct ModelConfigView {
     pub config_id: String,
+    pub tenant_id: String,
     pub name: String,
     pub kind: String,
     pub protocol: String,
@@ -71,16 +93,25 @@ pub struct ModelConfigView {
     pub voice: String,
     pub is_default: bool,
     pub status: String,
+    pub tts_languages: Vec<String>,
+    pub stt_languages: Vec<String>,
 }
 
 fn view_config(config: ModelConfig) -> ModelConfigView {
     let hint = if config.api_key.len() <= 4 {
-        if config.api_key.is_empty() { String::new() } else { "****".into() }
+        if config.api_key.is_empty() {
+            String::new()
+        } else {
+            "****".into()
+        }
     } else {
         format!("****{}", &config.api_key[config.api_key.len() - 4..])
     };
+    let tts_languages = parse_extra_lang_list(&config.extra_json, "tts_languages");
+    let stt_languages = parse_extra_lang_list(&config.extra_json, "stt_languages");
     ModelConfigView {
         config_id: config.config_id,
+        tenant_id: config.tenant_id,
         name: config.name,
         kind: config.kind,
         protocol: config.protocol,
@@ -91,6 +122,8 @@ fn view_config(config: ModelConfig) -> ModelConfigView {
         voice: config.voice,
         is_default: config.is_default,
         status: config.status,
+        tts_languages,
+        stt_languages,
     }
 }
 
@@ -103,10 +136,34 @@ pub fn market_router(repo: DalRepo) -> Router {
         .route("/api/v1/consumers", get(list_consumers).post(create_consumer))
         .route("/api/v1/api-keys", get(list_api_keys).post(create_api_key))
         .route("/api/v1/voice/sessions", get(list_voice_sessions))
-        .route("/api/v1/model-configs", get(list_model_configs).post(create_model_config))
-        .route("/api/v1/model-configs/{config_id}/credentials", post(update_model_credentials))
-        .route("/api/v1/model-configs/{config_id}/default", post(set_default_model_config))
-        .route("/api/v1/model-configs/{config_id}/disable", post(disable_model_config))
+        .route(
+            "/api/v1/model-configs",
+            get(list_model_configs).post(create_model_config),
+        )
+        .route(
+            "/api/v1/model-configs/{config_id}/credentials",
+            post(update_model_credentials),
+        )
+        .route(
+            "/api/v1/model-configs/{config_id}/tts-languages",
+            post(update_model_tts_languages),
+        )
+        .route(
+            "/api/v1/model-configs/{config_id}/stt-languages",
+            post(update_model_stt_languages),
+        )
+        .route(
+            "/api/v1/model-configs/{config_id}/default",
+            post(set_default_model_config),
+        )
+        .route(
+            "/api/v1/model-configs/{config_id}/disable",
+            post(disable_model_config),
+        )
+        .route(
+            "/api/v1/tenant-language-policy",
+            get(get_tenant_language_policy).put(put_tenant_language_policy),
+        )
         .route("/api/v1/usage/summary", get(get_usage_summary))
         .with_state(repo)
 }
@@ -130,7 +187,11 @@ async fn login(
     State(repo): State<DalRepo>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<AuthSession>>, AppError> {
-    let role = if req.role == "admin" { "admin" } else { "developer" };
+    let role = if req.role == "admin" {
+        "admin"
+    } else {
+        "developer"
+    };
     let session = repo
         .login(role, req.username.trim(), &req.password)
         .await
@@ -149,7 +210,11 @@ async fn me(
 async fn list_portals(
     State(repo): State<DalRepo>,
 ) -> Result<Json<ApiResponse<Vec<PortalDto>>>, AppError> {
-    Ok(ApiResponse::ok(repo.list_portals().await.map_err(|e| AppError::Internal(e.to_string()))?))
+    Ok(ApiResponse::ok(
+        repo.list_portals()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    ))
 }
 
 async fn create_portal(
@@ -171,7 +236,11 @@ async fn create_portal(
 async fn list_products(
     State(repo): State<DalRepo>,
 ) -> Result<Json<ApiResponse<Vec<ProductDto>>>, AppError> {
-    Ok(ApiResponse::ok(repo.list_products().await.map_err(|e| AppError::Internal(e.to_string()))?))
+    Ok(ApiResponse::ok(
+        repo.list_products()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    ))
 }
 
 async fn create_product(
@@ -181,7 +250,9 @@ async fn create_product(
 ) -> Result<Json<ApiResponse<ProductDto>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     if user.role != "admin" {
-        return Err(AppError::Forbidden("only admin can publish products".into()));
+        return Err(AppError::Forbidden(
+            "only admin can publish products".into(),
+        ));
     }
     Ok(ApiResponse::ok(
         repo.create_product(
@@ -205,7 +276,11 @@ async fn list_consumers(
     } else {
         q.tenant_id.as_deref()
     };
-    Ok(ApiResponse::ok(repo.list_consumers(tenant).await.map_err(|e| AppError::Internal(e.to_string()))?))
+    Ok(ApiResponse::ok(
+        repo.list_consumers(tenant)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    ))
 }
 
 async fn create_consumer(
@@ -215,17 +290,31 @@ async fn create_consumer(
 ) -> Result<Json<ApiResponse<ConsumerDto>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     let (portal_id, developer_id) = if user.role == "developer" {
-        (user.portal_id.clone().unwrap_or_else(|| "portal_default".into()), user.subject_id.clone())
+        (
+            user.portal_id
+                .clone()
+                .unwrap_or_else(|| "portal_default".into()),
+            user.subject_id.clone(),
+        )
     } else {
         (
-            req.portal_id.clone().unwrap_or_else(|| "portal_default".into()),
-            req.developer_id.clone().unwrap_or_else(|| "tenant_ugreen_01".into()),
+            req.portal_id
+                .clone()
+                .unwrap_or_else(|| "portal_default".into()),
+            req.developer_id
+                .clone()
+                .unwrap_or_else(|| "tenant_ugreen_01".into()),
         )
     };
     Ok(ApiResponse::ok(
-        repo.create_consumer(&req.name, &portal_id, &developer_id, req.description.as_deref())
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?,
+        repo.create_consumer(
+            &req.name,
+            &portal_id,
+            &developer_id,
+            req.description.as_deref(),
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?,
     ))
 }
 
@@ -235,8 +324,16 @@ async fn list_api_keys(
     Query(q): Query<UsageQueryParams>,
 ) -> Result<Json<ApiResponse<Vec<ApiKeyDto>>>, AppError> {
     let user = require_user(&repo, &headers).await?;
-    let tenant = if user.role == "developer" { Some(user.subject_id.as_str()) } else { q.tenant_id.as_deref() };
-    Ok(ApiResponse::ok(repo.list_api_keys(tenant).await.map_err(|e| AppError::Internal(e.to_string()))?))
+    let tenant = if user.role == "developer" {
+        Some(user.subject_id.as_str())
+    } else {
+        q.tenant_id.as_deref()
+    };
+    Ok(ApiResponse::ok(
+        repo.list_api_keys(tenant)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    ))
 }
 
 async fn create_api_key(
@@ -245,7 +342,11 @@ async fn create_api_key(
     Json(req): Json<ApiKeyRequest>,
 ) -> Result<Json<ApiResponse<ApiKeyCreated>>, AppError> {
     require_user(&repo, &headers).await?;
-    Ok(ApiResponse::ok(repo.create_api_key(&req.consumer_id).await.map_err(|e| AppError::BadRequest(e.to_string()))?))
+    Ok(ApiResponse::ok(
+        repo.create_api_key(&req.consumer_id)
+            .await
+            .map_err(|e| AppError::BadRequest(e.to_string()))?,
+    ))
 }
 
 async fn list_voice_sessions(
@@ -254,16 +355,33 @@ async fn list_voice_sessions(
     Query(q): Query<UsageQueryParams>,
 ) -> Result<Json<ApiResponse<Vec<VoiceSessionDto>>>, AppError> {
     let user = require_user(&repo, &headers).await?;
-    let tenant = if user.role == "developer" { Some(user.subject_id.as_str()) } else { q.tenant_id.as_deref() };
-    Ok(ApiResponse::ok(repo.list_voice_sessions(tenant).await.map_err(|e| AppError::Internal(e.to_string()))?))
+    let tenant = if user.role == "developer" {
+        Some(user.subject_id.as_str())
+    } else {
+        q.tenant_id.as_deref()
+    };
+    Ok(ApiResponse::ok(
+        repo.list_voice_sessions(tenant)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?,
+    ))
 }
 
 async fn list_model_configs(
     State(repo): State<DalRepo>,
+    headers: HeaderMap,
     Query(q): Query<UsageQueryParams>,
 ) -> Result<Json<ApiResponse<Vec<ModelConfigView>>>, AppError> {
-    let items = repo.list_model_configs(None).await.map_err(|e| AppError::Internal(e.to_string()))?;
-    let _ = q;
+    let user = require_user(&repo, &headers).await?;
+    let tenant = if user.role == "developer" {
+        Some(user.subject_id.as_str())
+    } else {
+        q.tenant_id.as_deref()
+    };
+    let items = repo
+        .list_model_configs(tenant)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
     Ok(ApiResponse::ok(items.into_iter().map(view_config).collect()))
 }
 
@@ -274,60 +392,183 @@ async fn create_model_config(
 ) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     if user.role != "admin" {
-        return Err(AppError::Forbidden("only admin can configure models".into()));
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
     }
-    let created = repo.create_model_config(
-        &req.name,
-        &req.kind,
-        &req.protocol,
-        req.base_url.as_deref().unwrap_or(""),
-        req.api_key.as_deref().unwrap_or(""),
-        req.api_secret.as_deref().unwrap_or(""),
-        &req.model,
-        req.voice.as_deref().unwrap_or(""),
-        req.is_default.unwrap_or(false),
-    ).await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let mut created = repo
+        .create_model_config(
+            req.tenant_id.as_deref().unwrap_or("tenant_ugreen_01"),
+            &req.name,
+            &req.kind,
+            &req.protocol,
+            req.base_url.as_deref().unwrap_or(""),
+            req.api_key.as_deref().unwrap_or(""),
+            req.api_secret.as_deref().unwrap_or(""),
+            &req.model,
+            req.voice.as_deref().unwrap_or(""),
+            req.is_default.unwrap_or(false),
+        )
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+
+    if let Some(tts_langs) = &req.tts_languages {
+        if !tts_langs.is_empty() {
+            created = repo
+                .update_model_extra_langs(&created.config_id, "tts_languages", tts_langs)
+                .await
+                .map_err(|e| AppError::BadRequest(e.to_string()))?;
+        }
+    }
+    if let Some(stt_langs) = &req.stt_languages {
+        if !stt_langs.is_empty() {
+            created = repo
+                .update_model_extra_langs(&created.config_id, "stt_languages", stt_langs)
+                .await
+                .map_err(|e| AppError::BadRequest(e.to_string()))?;
+        }
+    }
+
     Ok(ApiResponse::ok(view_config(created)))
 }
 
 async fn update_model_credentials(
     State(repo): State<DalRepo>,
     headers: HeaderMap,
-    axum::extract::Path(config_id): axum::extract::Path<String>,
+    Path(config_id): Path<String>,
     Json(req): Json<CredentialsRequest>,
 ) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     if user.role != "admin" {
-        return Err(AppError::Forbidden("only admin can configure models".into()));
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
     }
-    let updated = repo.update_model_credentials(&config_id, req.api_key.as_deref(), req.api_secret.as_deref(), req.base_url.as_deref())
-        .await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let updated = repo
+        .update_model_credentials(
+            &config_id,
+            req.api_key.as_deref(),
+            req.api_secret.as_deref(),
+            req.base_url.as_deref(),
+        )
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(view_config(updated)))
+}
+
+async fn update_model_tts_languages(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    Path(config_id): Path<String>,
+    Json(req): Json<UpdateTtsLanguagesRequest>,
+) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
+    }
+    let updated = repo
+        .update_model_extra_langs(&config_id, "tts_languages", &req.tts_languages)
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(view_config(updated)))
+}
+
+async fn update_model_stt_languages(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    Path(config_id): Path<String>,
+    Json(req): Json<UpdateSttLanguagesRequest>,
+) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
+    }
+    let updated = repo
+        .update_model_extra_langs(&config_id, "stt_languages", &req.stt_languages)
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     Ok(ApiResponse::ok(view_config(updated)))
 }
 
 async fn set_default_model_config(
     State(repo): State<DalRepo>,
     headers: HeaderMap,
-    axum::extract::Path(config_id): axum::extract::Path<String>,
+    Path(config_id): Path<String>,
 ) -> Result<Json<ApiResponse<ModelConfigView>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     if user.role != "admin" {
-        return Err(AppError::Forbidden("only admin can configure models".into()));
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
     }
-    Ok(ApiResponse::ok(view_config(repo.set_default_model_config(&config_id).await.map_err(|e| AppError::BadRequest(e.to_string()))?)))
+    Ok(ApiResponse::ok(view_config(
+        repo.set_default_model_config(&config_id)
+            .await
+            .map_err(|e| AppError::BadRequest(e.to_string()))?,
+    )))
 }
 
 async fn disable_model_config(
     State(repo): State<DalRepo>,
     headers: HeaderMap,
-    axum::extract::Path(config_id): axum::extract::Path<String>,
+    Path(config_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let user = require_user(&repo, &headers).await?;
     if user.role != "admin" {
-        return Err(AppError::Forbidden("only admin can configure models".into()));
+        return Err(AppError::Forbidden(
+            "only admin can configure models".into(),
+        ));
     }
-    repo.disable_model_config(&config_id).await.map_err(|e| AppError::BadRequest(e.to_string()))?;
+    repo.disable_model_config(&config_id)
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
     Ok(ApiResponse::ok(()))
+}
+
+async fn get_tenant_language_policy(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    Query(q): Query<UsageQueryParams>,
+) -> Result<Json<ApiResponse<TenantLanguagePolicy>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    let tenant_id = if user.role == "developer" {
+        user.subject_id
+    } else {
+        q.tenant_id.unwrap_or_else(|| "tenant_ugreen_01".into())
+    };
+    let policy = repo
+        .get_language_policy(&tenant_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code(
+                "language_policy_missing",
+                format!("tenant {} has no language policy", tenant_id),
+            )
+        })?;
+    Ok(ApiResponse::ok(policy))
+}
+
+async fn put_tenant_language_policy(
+    State(repo): State<DalRepo>,
+    headers: HeaderMap,
+    Json(req): Json<UpsertTenantLanguagePolicyRequest>,
+) -> Result<Json<ApiResponse<TenantLanguagePolicy>>, AppError> {
+    let user = require_user(&repo, &headers).await?;
+    if user.role != "admin" {
+        return Err(AppError::Forbidden(
+            "only admin can update tenant language policy".into(),
+        ));
+    }
+    let updated = repo
+        .upsert_language_policy(&req.tenant_id, &req.default_target_lang, &req.allowed_langs)
+        .await
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    Ok(ApiResponse::ok(updated))
 }
 
 async fn get_usage_summary(
@@ -335,11 +576,17 @@ async fn get_usage_summary(
     headers: HeaderMap,
     Query(q): Query<UsageQueryParams>,
 ) -> Result<Json<ApiResponse<UsageSummaryResponse>>, AppError> {
-    let user = if let Some(token) = bearer(&headers) { repo.auth_session(&token).await } else { None };
+    let user = if let Some(token) = bearer(&headers) {
+        repo.auth_session(&token).await
+    } else {
+        None
+    };
     let tenant_id = if user.as_ref().map(|u| u.role.as_str()) == Some("developer") {
         user.unwrap().subject_id
     } else {
-        q.tenant_id.clone().unwrap_or_else(|| "tenant_ugreen_01".into())
+        q.tenant_id
+            .clone()
+            .unwrap_or_else(|| "tenant_ugreen_01".into())
     };
     Ok(ApiResponse::ok(
         repo.query_usage_summary(&tenant_id, q.api_key_id.as_deref())
