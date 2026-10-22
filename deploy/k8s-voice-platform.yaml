@@ -36,6 +36,24 @@ data:
           models:
             - name: "deepseek-v4.1-flash:1017-cloud"
               alias: "deepseek-v4.1-flash:1017-cloud"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "qwen3.8-max"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "qwen3.8-flash"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "doubao-seed-2-1-pro-260915"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "doubao-seed-2-1-lite-260915"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "gpt-5.6-sol"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "gpt-5.6-luna"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "gemini-3.8-flash"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "gemini-4-argon"
+            - name: "deepseek-v4.1-flash:1017-cloud"
+              alias: "gemini-3.5-flash-lite"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -124,6 +142,10 @@ spec:
               value: "hm_internal_metering_secret_2026"
             - name: HIMARKET_TTS_URL
               value: "http://voice-agent-worker:8091/internal/v1/synthesize"
+            - name: CLIPROXY_BASE_URL
+              value: "http://cliproxyapi:8317/v1"
+            - name: CLIPROXY_API_KEY
+              value: "cpa-internal-key"
           resources:
             requests:
               cpu: 50m

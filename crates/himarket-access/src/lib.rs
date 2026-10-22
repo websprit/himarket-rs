@@ -58,6 +58,8 @@ pub trait SynthesizeClient: Send + Sync {
 
 pub struct HttpChatClient {
     client: reqwest::Client,
+    cliproxy_base_url: String,
+    cliproxy_api_key: String,
 }
 
 impl HttpChatClient {
@@ -66,7 +68,14 @@ impl HttpChatClient {
             .timeout(Duration::from_secs(25))
             .build()
             .expect("chat http client");
-        Self { client }
+        let cliproxy_base_url = std::env::var("CLIPROXY_BASE_URL").unwrap_or_default();
+        let cliproxy_api_key = std::env::var("CLIPROXY_API_KEY")
+            .unwrap_or_else(|_| "cpa-internal-key".to_string());
+        Self {
+            client,
+            cliproxy_base_url,
+            cliproxy_api_key,
+        }
     }
 }
 
@@ -170,13 +179,24 @@ impl ChatClient for HttpChatClient {
                     cached_tokens: Some(0),
                 });
             }
-            let base = binding.base_url.trim().trim_end_matches('/');
+            let use_cliproxy =
+                binding.protocol == "openai_chat" && !self.cliproxy_base_url.trim().is_empty();
+            let base = if use_cliproxy {
+                self.cliproxy_base_url.trim().trim_end_matches('/')
+            } else {
+                binding.base_url.trim().trim_end_matches('/')
+            };
             if base.is_empty() {
                 return Err(AppError::bad_gateway_code(
                     "llm_failed",
                     "LLM base_url is empty",
                 ));
             }
+            let auth_token = if use_cliproxy {
+                self.cliproxy_api_key.trim()
+            } else {
+                token.as_str()
+            };
             let url = format!("{}/chat/completions", base);
             let body = serde_json::json!({
                 "model": binding.model,
@@ -187,9 +207,13 @@ impl ChatClient for HttpChatClient {
                 "temperature": 0.0,
                 "max_tokens": 2048,
             });
-            let mut req = self.client.post(&url).json(&body);
-            if !token.is_empty() {
-                req = req.header("Authorization", format!("Bearer {}", token));
+            let mut req = self
+                .client
+                .post(&url)
+                .header("X-HiMarket-Upstream-Base-Url", binding.base_url.trim())
+                .json(&body);
+            if !auth_token.is_empty() {
+                req = req.header("Authorization", format!("Bearer {}", auth_token));
             }
             let resp = req
                 .send()
@@ -749,42 +773,57 @@ async fn create_voice_session(
 
     match task.as_str() {
         "cascade" => {
-            let llm = state
-                .repo
-                .resolve_model_config(tenant_id, "llm", req.llm_model.as_deref())
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::bad_request_code(
-                        "llm_unavailable",
-                        "当前租户没有可用的 LLM 配置",
-                    )
-                })?;
-            let stt = state
-                .repo
-                .resolve_model_config(tenant_id, "stt", req.stt_model.as_deref())
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::bad_request_code(
-                        "stt_unavailable",
-                        "当前租户没有可用的 STT 配置",
-                    )
-                })?;
-            let tts = state
-                .repo
-                .resolve_model_config(tenant_id, "tts", req.tts_voice.as_deref())
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
-                .ok_or_else(|| {
-                    AppError::bad_request_code(
-                        "tts_unavailable",
-                        "当前租户没有可用的 TTS 配置",
-                    )
-                })?;
-            stt_cfg = Some(stt);
-            llm_cfg = Some(llm);
-            tts_cfg = Some(tts);
+            if req.mode == "realtime" {
+                let rt_model = state
+                    .repo
+                    .resolve_route_config(tenant_id, "realtime", None, req.llm_model.as_deref())
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::bad_request_code(
+                            "llm_unavailable",
+                            "当前租户没有可用的 Realtime 模型配置",
+                        )
+                    })?;
+                llm_cfg = Some(rt_model);
+            } else {
+                let llm = state
+                    .repo
+                    .resolve_model_config(tenant_id, "llm", req.llm_model.as_deref())
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::bad_request_code(
+                            "llm_unavailable",
+                            "当前租户没有可用的 LLM 配置",
+                        )
+                    })?;
+                let stt = state
+                    .repo
+                    .resolve_model_config(tenant_id, "stt", req.stt_model.as_deref())
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::bad_request_code(
+                            "stt_unavailable",
+                            "当前租户没有可用的 STT 配置",
+                        )
+                    })?;
+                let tts = state
+                    .repo
+                    .resolve_model_config(tenant_id, "tts", req.tts_voice.as_deref())
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?
+                    .ok_or_else(|| {
+                        AppError::bad_request_code(
+                            "tts_unavailable",
+                            "当前租户没有可用的 TTS 配置",
+                        )
+                    })?;
+                stt_cfg = Some(stt);
+                llm_cfg = Some(llm);
+                tts_cfg = Some(tts);
+            }
         }
         "transcribe" => {
             let sel = state
