@@ -277,6 +277,7 @@ mod tests {
             stt_model: Some("faster-whisper-small".to_string()),
             tts_voice: Some("piper-zh_CN-huayan-medium".to_string()),
             system_prompt: None,
+            greeting_text: None,
             source_lang: String::new(),
             target_lang: String::new(),
             speak: true,

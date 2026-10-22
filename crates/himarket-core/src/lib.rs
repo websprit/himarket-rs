@@ -421,6 +421,8 @@ pub struct CreateVoiceSessionRequest {
     pub tts_voice: Option<String>,
     pub system_prompt: Option<String>,
     #[serde(default)]
+    pub greeting_text: Option<String>,
+    #[serde(default)]
     pub source_lang: String,
     #[serde(default)]
     pub target_lang: String,
@@ -437,6 +439,7 @@ impl Default for CreateVoiceSessionRequest {
             stt_model: None,
             tts_voice: None,
             system_prompt: None,
+            greeting_text: None,
             source_lang: String::new(),
             target_lang: String::new(),
             speak: false,

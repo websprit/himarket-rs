@@ -418,11 +418,14 @@ pub struct AgentJobMetadata {
     pub tts: Option<ModelBinding>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_text: Option<String>,
 }
 
 pub fn access_router(state: AccessState) -> Router {
     Router::new()
         .route("/api/v1/voice/sessions", post(create_voice_session))
+        .route("/api/v1/voice/chat", post(create_voice_chat_turn))
         .route("/api/v1/voice/language-policy", get(get_voice_language_policy))
         .route("/api/v1/voice/translations", post(create_text_translation))
         .route(
@@ -894,6 +897,7 @@ async fn create_voice_session(
         stt: stt_binding,
         tts: tts_binding,
         system_prompt: req.system_prompt.clone(),
+        greeting_text: req.greeting_text.clone(),
     };
     let twirp_meta_json =
         serde_json::to_string(&twirp_job_meta).map_err(|e| AppError::Internal(e.to_string()))?;
@@ -989,6 +993,213 @@ async fn create_voice_session(
         speak: effective_speak,
         voice_fallback,
         stt_fallback,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VoiceChatRequest {
+    pub text: String,
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub persona_id: String,
+    pub system_prompt: Option<String>,
+    pub llm_model: Option<String>,
+    #[serde(default)]
+    pub client_input_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VoiceChatResponse {
+    pub session_id: String,
+    pub seq: i64,
+    pub persona_id: String,
+    pub user_text: String,
+    pub reply_text: String,
+    pub model: String,
+}
+
+fn persona_system_prompt(persona_id: &str, custom: Option<&str>) -> String {
+    if let Some(c) = custom.map(str::trim).filter(|s| !s.is_empty()) {
+        return c.to_string();
+    }
+    match persona_id.trim() {
+        "muyang" => "你是「沐阳」，一位温和理性的职场伙伴（男声·温和理性）。请用自然、真诚、共情且有条理的口吻与用户交流，每次回复控制在2到3句话，不要使用Markdown符号。".to_string(),
+        "xinglan" => "你是「星澜」，一位治愈轻柔的心灵树洞陪伴者（女声·治愈轻柔）。请用温暖、接纳、舒缓的口吻倾听和回应用户的情绪，每次回复控制在2到3句话，不要使用Markdown符号。".to_string(),
+        _ => "你是「知秋」，一位沉稳舒缓的情感导师（女声·沉稳舒缓）。请先共情用户的感受，再用温柔、清晰的引导帮用户慢慢理清思绪或关系，每次回复控制在2到3句话，不要使用Markdown符号。".to_string(),
+    }
+}
+
+async fn create_voice_chat_turn(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+    Json(req): Json<VoiceChatRequest>,
+) -> Result<Json<ApiResponse<VoiceChatResponse>>, AppError> {
+    let verified = require_business_key(&state, &headers).await?;
+    let tenant_id = verified.tenant_id.as_str();
+
+    let text = req.text.trim();
+    if text.is_empty() {
+        return Err(AppError::bad_request_code(
+            "empty_input",
+            "chat text cannot be empty",
+        ));
+    }
+    if text.chars().count() > 4000 {
+        return Err(AppError::bad_request_code(
+            "speak_text_too_long",
+            "chat text exceeds 4000 characters",
+        ));
+    }
+
+    let persona_id = if req.persona_id.trim().is_empty() {
+        "zhiqiu".to_string()
+    } else {
+        req.persona_id.trim().to_string()
+    };
+
+    let llm_cfg = state
+        .repo
+        .resolve_model_config(tenant_id, "llm", req.llm_model.as_deref())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code("llm_unavailable", "当前租户没有可用的 LLM 配置")
+        })?;
+    if !is_llm_runnable(&llm_cfg) {
+        return Err(AppError::bad_request_code(
+            "llm_protocol_unsupported",
+            format!("protocol {} is not supported", llm_cfg.protocol),
+        ));
+    }
+
+    let session_id = if let Some(existing_id) = req
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let sess = state
+            .repo
+            .get_session_record(existing_id)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound("session not found".to_string()))?;
+        if sess.tenant_id != tenant_id {
+            return Err(AppError::NotFound("session not found".to_string()));
+        }
+        existing_id.to_string()
+    } else {
+        let new_id = format!("sess_chat_{}", uuid::Uuid::now_v7().simple());
+        state
+            .repo
+            .insert_session_record(
+                &new_id,
+                None,
+                &verified,
+                "cascade",
+                "cascade",
+                "zh",
+                "zh",
+                true,
+                None,
+                Some(&llm_cfg.config_id),
+                None,
+                Some(&llm_cfg.model),
+                None,
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        new_id
+    };
+
+    let history_rows = state
+        .repo
+        .list_summary_inputs(&session_id)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let recent_start = history_rows.len().saturating_sub(8);
+    let mut prompt_with_context = String::new();
+    for r in &history_rows[recent_start..] {
+        if let Some(u) = r.source_text.as_deref().filter(|s| !s.is_empty()) {
+            prompt_with_context.push_str(&format!("用户：{}\n", u));
+        }
+        if let Some(a) = r.assistant_text.as_deref().filter(|s| !s.is_empty()) {
+            prompt_with_context.push_str(&format!("助手：{}\n", a));
+        }
+    }
+    prompt_with_context.push_str(&format!("用户：{}", text));
+
+    let sys_prompt = persona_system_prompt(&persona_id, req.system_prompt.as_deref());
+    let binding = ModelBinding::from(llm_cfg.clone());
+    let out = state
+        .chat_client
+        .complete(
+            &binding,
+            &sys_prompt,
+            &prompt_with_context,
+            &state.livekit_api_key,
+            &state.livekit_api_secret,
+        )
+        .await?;
+
+    let cid = if req.client_input_id.trim().is_empty() {
+        format!("chat_{}", uuid::Uuid::now_v7().simple())
+    } else {
+        req.client_input_id.trim().to_string()
+    };
+
+    let appended = state
+        .repo
+        .append_summary_input(
+            &session_id,
+            "cascade",
+            Some(text),
+            None,
+            Some(&out.content),
+            &cid,
+        )
+        .await
+        .map_err(map_dal_err)?;
+
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let ev = UsageEventPayload {
+        event_id: format!("ev_chat_{}", uuid::Uuid::now_v7().simple()),
+        idempotency_key: format!("api_chat:{}:{}", session_id, cid),
+        session_id: session_id.clone(),
+        room_name: None,
+        tenant_id: verified.tenant_id.clone(),
+        api_key_id: verified.api_key_id.clone(),
+        source: "himarket_access".to_string(),
+        category: "text_llm".to_string(),
+        model: llm_cfg.model.clone(),
+        occurred_at_ms: now_ms,
+        metrics: UsageMetricsPayload {
+            prompt_tokens: out
+                .prompt_tokens
+                .or(Some(prompt_with_context.chars().count() as i64)),
+            completion_tokens: out
+                .completion_tokens
+                .or(Some(out.content.chars().count() as i64)),
+            cached_tokens: out.cached_tokens,
+            ..Default::default()
+        },
+    };
+    let _ = state
+        .repo
+        .ingest_usage_event(ev)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(ApiResponse::ok(VoiceChatResponse {
+        session_id,
+        seq: appended.seq,
+        persona_id,
+        user_text: text.to_string(),
+        reply_text: out.content,
+        model: llm_cfg.model,
     }))
 }
 
