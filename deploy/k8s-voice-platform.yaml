@@ -37,8 +37,6 @@ data:
             - name: "deepseek-v4.1-flash:1017-cloud"
               alias: "deepseek-v4.1-flash:1017-cloud"
             - name: "deepseek-v4.1-flash:1017-cloud"
-              alias: "qwen3.8-max"
-            - name: "deepseek-v4.1-flash:1017-cloud"
               alias: "qwen3.8-flash"
             - name: "deepseek-v4.1-flash:1017-cloud"
               alias: "doubao-seed-2-1-pro-260915"
@@ -54,6 +52,13 @@ data:
               alias: "gemini-4-argon"
             - name: "deepseek-v4.1-flash:1017-cloud"
               alias: "gemini-3.5-flash-lite"
+        - name: "bailian"
+          base-url: "https://llm-phko1czo1s8dy7v1.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+          keys:
+            - api-key: "sk-ws-H.YMMYLHX.cHil.MEUCIQC0OnWQKpc2Cq7hKYVx4DvkhBR4uGqHiNpJq7T1xCDpjAIgencsj9fHlvyFZs4NrPbomQfpoy2VDEsEOiblZ_xYg74"
+          models:
+            - name: "qwen3.8-max"
+              alias: "qwen3.8-max"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -338,6 +343,10 @@ spec:
           hostPath:
             path: /Users/ugreen/Documents/ChatGPT/ai对话/voice-agent-worker/task_route.py
             type: File
+        - name: dashscope-plugin
+          hostPath:
+            path: /Users/ugreen/Documents/ChatGPT/ai对话/livekit-agents/livekit-plugins/livekit-plugins-dashscope
+            type: Directory
       containers:
         - name: worker
           image: himarket-voice-agent:dev
@@ -354,6 +363,8 @@ spec:
               mountPath: /app/vendor_dispatch.py
             - name: task-route
               mountPath: /app/task_route.py
+            - name: dashscope-plugin
+              mountPath: /opt/livekit-plugins/livekit-plugins-dashscope
           env:
             - name: LIVEKIT_URL
               value: "ws://livekit:7880"
@@ -377,6 +388,8 @@ spec:
               value: "/models/piper/zh_CN-huayan-medium.onnx"
             - name: WHISPER_MODEL_DIR
               value: "/models/faster-whisper-tiny"
+            - name: LIVEKIT_PLUGINS_ROOT
+              value: "/opt/livekit-plugins"
           resources:
             requests:
               cpu: 100m
