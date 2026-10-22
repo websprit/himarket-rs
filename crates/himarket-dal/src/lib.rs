@@ -718,7 +718,7 @@ impl DalRepo {
 
         sqlx::query(
             "INSERT INTO tenant_language_policy (tenant_id, default_target_lang, allowed_langs)
-             VALUES ('tenant_ugreen_01', 'zh', '[\"zh\",\"en\",\"ja\",\"ko\"]')
+             VALUES ('tenant_ugreen_01', 'zh', '[\"zh\",\"de\",\"en\",\"es\",\"fr\",\"id\",\"it\",\"ja\",\"ko\"]')
              ON CONFLICT (tenant_id) DO NOTHING",
         )
         .execute(&self.pool)

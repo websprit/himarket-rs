@@ -160,7 +160,7 @@ impl ChatClient for HttpChatClient {
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": 0.0,
-                "max_tokens": 512,
+                "max_tokens": 2048,
             });
             let mut req = self.client.post(&url).json(&body);
             if !token.is_empty() {
