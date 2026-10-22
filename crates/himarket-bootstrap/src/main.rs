@@ -299,6 +299,8 @@ mod tests {
             source: "livekit_sfu".into(),
             category: "rtc".into(),
             model: "webrtc-audio".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000000000,
             metrics: UsageMetricsPayload {
                 rtc_duration_ms: Some(12_000),
@@ -320,6 +322,8 @@ mod tests {
             source: "agent_worker".into(),
             category: "stt".into(),
             model: "faster-whisper".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000001000,
             metrics: UsageMetricsPayload {
                 audio_duration_ms: Some(4_200),
@@ -338,6 +342,8 @@ mod tests {
             source: "agent_worker".into(),
             category: "tts".into(),
             model: "piper-zh".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000002000,
             metrics: UsageMetricsPayload {
                 tts_characters: Some(45),
@@ -357,6 +363,8 @@ mod tests {
             source: "cli_proxy_api".into(),
             category: "text_llm".into(),
             model: "deepseek-v4.1-flash:1017-cloud".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000001500,
             metrics: UsageMetricsPayload {
                 prompt_tokens: Some(120),
@@ -377,6 +385,8 @@ mod tests {
             source: "agent_worker".into(),
             category: "translate".into(),
             model: "deepseek-v4.1-flash:1017-cloud".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000002500,
             metrics: UsageMetricsPayload {
                 prompt_tokens: Some(50),
@@ -411,6 +421,8 @@ mod tests {
             source: "himarket_access".into(),
             category: "summary".into(),
             model: "deepseek-v4.1-flash:1017-cloud".into(),
+            vendor: String::new(),
+            status: "SUCCESS".into(),
             occurred_at_ms: 1761000003000,
             metrics: UsageMetricsPayload {
                 prompt_tokens: Some(200),
@@ -909,5 +921,339 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(spk_lang_reject.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_mvp_acceptance_script_1_to_4_and_encrypted_keys() {
+        let repo = fresh_repo().await;
+
+        // Gap 6.1: Verify all non-empty api_key rows in PostgreSQL are encrypted with "enc:v1:"
+        let raw_keys = repo.raw_non_empty_api_keys().await.unwrap();
+        assert!(!raw_keys.is_empty());
+        for (_cid, k) in &raw_keys {
+            assert!(k.starts_with("enc:v1:"), "raw db key was not encrypted: {}", k);
+            assert!(!k.contains("cb4631cad50c4e3eb1342b9ef0075dd5"));
+        }
+
+        // Verify cost-effective models from the PRD selection table are seeded
+        for cost_model in [
+            "paraformer-realtime-v2",
+            "volc.seedasr.auc",
+            "gpt-4o-mini-transcribe",
+            "gemini-3.5-transcribe-live",
+            "qwen3-tts-flash",
+            "volc-tts-standard",
+            "azure-neural-tts",
+            "gemini-3.8-flash-lite-tts",
+            "qwen3.8-flash",
+            "doubao-seed-2-1-lite-260915",
+            "gpt-5.6-luna",
+            "gemini-3.5-flash-lite",
+        ] {
+            let found = repo
+                .resolve_model_config("tenant_ugreen_01", "llm", Some(cost_model))
+                .await
+                .unwrap()
+                .or(
+                    repo.resolve_model_config("tenant_ugreen_01", "stt", Some(cost_model))
+                        .await
+                        .unwrap(),
+                )
+                .or(
+                    repo.resolve_model_config("tenant_ugreen_01", "tts", Some(cost_model))
+                        .await
+                        .unwrap(),
+                );
+            assert!(found.is_some(), "missing cost-effective model {}", cost_model);
+        }
+
+        let chat_fake = Arc::new(FakeChatClient::new(5, false));
+        let synth_fake = Arc::new(FakeSynthClient { should_fail: false });
+        let app = build_app_with_clients(
+            repo.clone(),
+            "devkey".into(),
+            "secret".into(),
+            "ws://127.0.0.1:7880".into(),
+            "http://127.0.0.1:9".into(),
+            "hm_internal_metering_secret_2026".into(),
+            chat_fake,
+            synth_fake,
+            true,
+        );
+
+        // Gap 6.2: Verify developer role is strictly read-only (403 on create consumer / create key)
+        let dev_sess = repo
+            .login("developer", "ugreen_voice_dev", "voice123")
+            .await
+            .unwrap()
+            .unwrap();
+        let dev_create_cons = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/consumers")
+                    .header("Authorization", format!("Bearer {}", dev_sess.token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"name":"Unauthorized App"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(dev_create_cons.status(), StatusCode::FORBIDDEN);
+
+        let admin_sess = repo.login("admin", "admin", "admin123").await.unwrap().unwrap();
+
+        // Acceptance Step 1: Unified /v1/* calls (ASR, TTS, Translate LLM, Summary LLM) with one business API key
+        let asr_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"text_hint":"今天天气怎么样","format":"pcm","sample_rate":16000,"language":"zh"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(asr_resp.status(), StatusCode::OK);
+
+        let tts_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/speech")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"input":"欢迎使用绿联AI平台","speed":1.2,"response_format":"wav","language":"zh"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tts_resp.status(), StatusCode::OK);
+        assert_eq!(tts_resp.headers().get("content-type").unwrap(), "audio/wav");
+
+        let tr_v1_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"capability":"translate","target_lang":"en","messages":[{"role":"user","content":"你好世界"}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tr_v1_resp.status(), StatusCode::OK);
+
+        let sum_v1_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"capability":"summary","target_lang":"zh","stream":true,"messages":[{"role":"user","content":"第一段会议内容。第二段会议内容。"}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sum_v1_resp.status(), StatusCode::OK);
+        let sse_body = String::from_utf8(
+            to_bytes(sum_v1_resp.into_body(), 65536).await.unwrap().to_vec(),
+        )
+        .unwrap();
+        assert!(sse_body.contains("data: [DONE]"));
+
+        // Acceptance Step 2: Live vendor route switching in console without changing client code
+        let route_switch = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/routes")
+                    .header("Authorization", format!("Bearer {}", admin_sess.token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"tenant_id":"tenant_ugreen_01","capability":"translate_llm","language":"*","config_id":"qwen3.8-max"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(route_switch.status(), StatusCode::OK);
+
+        let tr_after_switch = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"capability":"translate","target_lang":"en","messages":[{"role":"user","content":"切换供应商测试"}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(tr_after_switch.status(), StatusCode::OK);
+        let tr_after_json: serde_json::Value = serde_json::from_slice(
+            &to_bytes(tr_after_switch.into_body(), 65536).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tr_after_json["vendor"], "aliyun");
+        assert_eq!(tr_after_json["model"], "qwen3.8-max");
+
+        // Acceptance Step 3: 3D Daily Usage Report (Business Line × Capability × Vendor)
+        let rep_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/usage/report?vendor=aliyun&category=translate")
+                    .header("Authorization", format!("Bearer {}", admin_sess.token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rep_resp.status(), StatusCode::OK);
+        let rep_json: serde_json::Value =
+            serde_json::from_slice(&to_bytes(rep_resp.into_body(), 65536).await.unwrap()).unwrap();
+        assert_eq!(rep_json["data"]["total_calls"], 1);
+        assert_eq!(rep_json["data"]["rows"][0]["vendor"], "aliyun");
+        assert_eq!(rep_json["data"]["rows"][0]["model"], "qwen3.8-max");
+
+        // Acceptance Step 4: Lower quota -> 80% WARN_80 -> 100% CRITICAL_100 -> 403 interception -> Raise quota -> Immediate recovery
+        let set_low_quota = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/api-keys/ak_live_ugreen_01/quota")
+                    .header("Authorization", format!("Bearer {}", admin_sess.token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"quota_limit_calls":5,"alert_threshold_pct":80,"reset_used":true}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(set_low_quota.status(), StatusCode::OK);
+
+        // Calls 1..=4 reach 4/5 = 80% -> WARN_80 alert generated
+        for _ in 0..4 {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/audio/transcriptions")
+                        .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(r#"{"text_hint":"quota test"}"#))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK);
+        }
+        let alerts_80 = repo
+            .list_quota_alerts(Some("tenant_ugreen_01"))
+            .await
+            .unwrap();
+        assert!(alerts_80.iter().any(|a| a.level == "WARN_80" && a.usage_pct == 80));
+
+        // Call 5 reaches 5/5 = 100% -> CRITICAL_100 alert generated
+        let r5 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"text_hint":"quota test 5"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r5.status(), StatusCode::OK);
+        let alerts_100 = repo
+            .list_quota_alerts(Some("tenant_ugreen_01"))
+            .await
+            .unwrap();
+        assert!(alerts_100
+            .iter()
+            .any(|a| a.level == "CRITICAL_100" && a.usage_pct == 100));
+
+        // Call 6 is intercepted with 403 quota_calls_exceeded
+        let r6 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"text_hint":"quota test 6"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r6.status(), StatusCode::FORBIDDEN);
+        let r6_json: serde_json::Value =
+            serde_json::from_slice(&to_bytes(r6.into_body(), 65536).await.unwrap()).unwrap();
+        assert_eq!(r6_json["error"], "quota_calls_exceeded");
+
+        // Raise quota_limit_calls to 100 in console -> next call immediately succeeds!
+        let raise_quota = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/v1/api-keys/ak_live_ugreen_01/quota")
+                    .header("Authorization", format!("Bearer {}", admin_sess.token))
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"quota_limit_calls":100,"alert_threshold_pct":80,"reset_used":false}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(raise_quota.status(), StatusCode::OK);
+
+        let r7 = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/audio/transcriptions")
+                    .header("Authorization", "Bearer hm_ak_live_ugreen_2026_voice_key")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"text_hint":"recovered call"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r7.status(), StatusCode::OK);
     }
 }

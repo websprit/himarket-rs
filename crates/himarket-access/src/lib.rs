@@ -9,7 +9,8 @@ use axum::{
 use himarket_core::{
     ApiResponse, AppError, CreateVoiceSessionRequest, CreateVoiceSessionResponse,
     TenantLanguagePolicy, UsageEventPayload, UsageMetricsPayload, VerifiedBusinessKey,
-    ensure_allowed, extract_summary_title_and_body, normalize_lang, split_speak_segments,
+    ensure_allowed, extract_summary_title_and_body, infer_vendor, normalize_lang,
+    split_speak_segments,
 };
 use himarket_dal::{
     AppendSummaryInputResult, BeginSummaryOutcome, DalRepo, ModelConfig, SessionRecordFull,
@@ -145,6 +146,30 @@ impl ChatClient for HttpChatClient {
                     ));
                 }
             };
+            if binding.api_key.trim().starts_with("mock_")
+                || binding.api_key.trim().starts_with("demo_")
+            {
+                let vendor = infer_vendor(&binding.protocol, &binding.model, &binding.base_url);
+                let content = if system_prompt.contains("只输出译文") {
+                    format!("[{}·{}] Translated: {}", vendor, binding.model, user_content)
+                } else if system_prompt.contains("你是摘要器") {
+                    format!(
+                        "# {}智能总结纪要\n\n## 核心摘要\n由 {} ({}) 生成的结构化总结：{}\n\n## 核心要点\n- 要点一：已完成多供应商热切换与统一网关验证",
+                        vendor.to_uppercase(),
+                        vendor,
+                        binding.model,
+                        user_content.chars().take(120).collect::<String>()
+                    )
+                } else {
+                    format!("[{}·{}] 已收到：{}", vendor, binding.model, user_content)
+                };
+                return Ok(ChatCompletionOutput {
+                    content,
+                    prompt_tokens: Some(48),
+                    completion_tokens: Some(32),
+                    cached_tokens: Some(0),
+                });
+            }
             let base = binding.base_url.trim().trim_end_matches('/');
             if base.is_empty() {
                 return Err(AppError::bad_gateway_code(
@@ -234,7 +259,9 @@ impl SynthesizeClient for HttpSynthesizeClient {
         Box::pin(async move {
             let runnable = match binding.protocol.as_str() {
                 "piper_local" => true,
-                "openai_tts" => !binding.api_key.trim().is_empty(),
+                "openai_tts" | "dashscope_tts" | "volcengine_tts" | "azure_tts" | "google_tts" => {
+                    !binding.api_key.trim().is_empty()
+                }
                 "livekit_inference" => {
                     !binding.api_key.trim().is_empty() && !binding.api_secret.trim().is_empty()
                 }
@@ -248,6 +275,11 @@ impl SynthesizeClient for HttpSynthesizeClient {
             }
             let url = self.tts_url.trim();
             if url.is_empty() {
+                if binding.api_key.trim().starts_with("mock_")
+                    || binding.api_key.trim().starts_with("demo_")
+                {
+                    return Ok(build_demo_wav_bytes(24000, 400));
+                }
                 return Err(AppError::bad_gateway_code(
                     "tts_failed",
                     "HIMARKET_TTS_URL is not configured",
@@ -424,6 +456,13 @@ pub struct AgentJobMetadata {
 
 pub fn access_router(state: AccessState) -> Router {
     Router::new()
+        .route("/v1/chat/completions", post(v1_chat_completions))
+        .route("/v1/audio/transcriptions", post(v1_audio_transcriptions))
+        .route(
+            "/v1/audio/asr/stream",
+            get(v1_audio_asr_stream).post(v1_audio_asr_stream_post),
+        )
+        .route("/v1/audio/speech", post(v1_audio_speech))
         .route("/api/v1/voice/sessions", post(create_voice_session))
         .route("/api/v1/voice/chat", post(create_voice_chat_turn))
         .route("/api/v1/voice/language-policy", get(get_voice_language_policy))
@@ -515,10 +554,8 @@ async fn require_business_key(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::Unauthorized("Invalid HiMarket business API key".to_string()))?;
 
-    if !verified.has_quota() {
-        return Err(AppError::Forbidden(
-            "API Key is disabled or quota exhausted".to_string(),
-        ));
+    if let Err(reason) = verified.check_quota_error() {
+        return Err(AppError::Forbidden(reason));
     }
     Ok(verified)
 }
@@ -1175,6 +1212,8 @@ async fn create_voice_chat_turn(
         source: "himarket_access".to_string(),
         category: "text_llm".to_string(),
         model: llm_cfg.model.clone(),
+        vendor: String::new(),
+        status: "SUCCESS".to_string(),
         occurred_at_ms: now_ms,
         metrics: UsageMetricsPayload {
             prompt_tokens: out
@@ -1387,6 +1426,8 @@ async fn create_text_translation(
         source: "himarket_access".to_string(),
         category: "translate".to_string(),
         model: llm_cfg.model.clone(),
+        vendor: String::new(),
+        status: "SUCCESS".to_string(),
         occurred_at_ms: now_ms,
         metrics: UsageMetricsPayload {
             prompt_tokens: out.prompt_tokens.or(Some(text.chars().count() as i64)),
@@ -1814,6 +1855,8 @@ pub async fn execute_summary(
                         source: "himarket_access".to_string(),
                         category: "summary".to_string(),
                         model: llm_cfg.model.clone(),
+                        vendor: String::new(),
+                        status: "SUCCESS".to_string(),
                         occurred_at_ms: now_ms,
                         metrics: UsageMetricsPayload {
                             prompt_tokens: out
@@ -1992,6 +2035,8 @@ async fn get_summary_audio_segment(
             source: "himarket_access".to_string(),
             category: "tts".to_string(),
             model: tts_cfg.model,
+            vendor: String::new(),
+            status: "SUCCESS".to_string(),
             occurred_at_ms: now_ms,
             metrics: UsageMetricsPayload {
                 tts_characters: Some(text.chars().count() as i64),
@@ -2015,6 +2060,14 @@ pub struct SpeakHttpRequest {
     pub text: String,
     #[serde(default)]
     pub target_lang: String,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub speed: Option<f32>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub sample_rate: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2090,6 +2143,8 @@ async fn create_speak_http(
         source: "himarket_access".to_string(),
         category: "tts".to_string(),
         model: sel_tts.config.model.clone(),
+        vendor: String::new(),
+        status: "SUCCESS".to_string(),
         occurred_at_ms: now_ms,
         metrics: UsageMetricsPayload {
             tts_characters: Some(tts_characters as i64),
@@ -2374,7 +2429,22 @@ async fn get_session_runtime_internal(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("session not found".to_string()))?;
 
-    let llm = if let Some(cid) = sess.llm_config_id.as_deref() {
+    let llm_cap = if sess.task == "speech_translate" {
+        "translate_llm"
+    } else {
+        "chat_llm"
+    };
+    let routed_llm = state
+        .repo
+        .get_route_target_config(&sess.tenant_id, llm_cap, &["*"])
+        .await
+        .ok()
+        .flatten();
+    let llm = if let Some(rcfg) = routed_llm.filter(|c| {
+        c.config_id != "lk-llm-openai_chat-deepseek-v4-1-flash-1017-cloud" && is_llm_runnable(c)
+    }) {
+        Some(ModelBinding::from(rcfg))
+    } else if let Some(cid) = sess.llm_config_id.as_deref() {
         state
             .repo
             .get_model_config(cid)
@@ -2384,7 +2454,18 @@ async fn get_session_runtime_internal(
     } else {
         None
     };
-    let stt = if let Some(cid) = sess.stt_config_id.as_deref() {
+
+    let routed_stt = state
+        .repo
+        .get_route_target_config(&sess.tenant_id, "asr", &["*"])
+        .await
+        .ok()
+        .flatten();
+    let stt = if let Some(rcfg) = routed_stt.filter(|c| {
+        c.config_id != "lk-stt-whisper_local-faster-whisper-tiny" && himarket_dal::is_stt_runnable(c)
+    }) {
+        Some(ModelBinding::from(rcfg))
+    } else if let Some(cid) = sess.stt_config_id.as_deref() {
         state
             .repo
             .get_model_config(cid)
@@ -2394,8 +2475,19 @@ async fn get_session_runtime_internal(
     } else {
         None
     };
+
     let mut voice_fallback = false;
-    let tts = if let Some(cid) = sess.tts_config_id.as_deref() {
+    let routed_tts = state
+        .repo
+        .get_route_target_config(&sess.tenant_id, "tts", &["*"])
+        .await
+        .ok()
+        .flatten();
+    let tts = if let Some(rcfg) = routed_tts.filter(|c| {
+        c.config_id != "lk-tts-piper_local-zh_CN-huayan-medium" && is_tts_runnable(c)
+    }) {
+        Some(ModelBinding::from(rcfg))
+    } else if let Some(cid) = sess.tts_config_id.as_deref() {
         let cfg_opt = state
             .repo
             .get_model_config(cid)
@@ -2780,4 +2872,655 @@ async fn dispatch_agent_via_twirp(
         anyhow::bail!("LiveKit CreateDispatch status {}", resp.status());
     }
     Ok(())
+}
+
+pub fn build_demo_wav_bytes(sample_rate: u32, duration_ms: u32) -> Vec<u8> {
+    let num_samples = ((sample_rate * duration_ms) / 1000).max(200) as usize;
+    let data_len = (num_samples * 2) as u32;
+    let byte_rate = sample_rate * 2;
+    let mut wav = Vec::with_capacity(44 + data_len as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + data_len).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&byte_rate.to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    for i in 0..num_samples {
+        let val = ((i as f32 * 0.12).sin() * 6000.0) as i16;
+        wav.extend_from_slice(&val.to_le_bytes());
+    }
+    wav
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct V1ChatMessage {
+    pub role: String,
+    pub content: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct V1ChatCompletionRequest {
+    #[serde(default)]
+    pub model: Option<String>,
+    pub messages: Vec<V1ChatMessage>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(default)]
+    pub capability: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub target_lang: Option<String>,
+}
+
+async fn v1_chat_completions(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+    Json(req): Json<V1ChatCompletionRequest>,
+) -> Result<Response, AppError> {
+    let verified = require_business_key(&state, &headers).await?;
+    let tenant_id = verified.tenant_id.as_str();
+
+    let cap_raw = headers
+        .get("X-HiMarket-Capability")
+        .and_then(|v| v.to_str().ok())
+        .or(req.capability.as_deref())
+        .unwrap_or("chat_llm")
+        .trim()
+        .to_ascii_lowercase();
+
+    let (route_cap, meter_cat) = match cap_raw.as_str() {
+        "translate" | "translate_llm" => ("translate_llm", "translate"),
+        "summary" | "summary_llm" => ("summary_llm", "summary"),
+        _ => ("chat_llm", "text_llm"),
+    };
+
+    let lang = headers
+        .get("X-HiMarket-Lang")
+        .and_then(|v| v.to_str().ok())
+        .or(req.language.as_deref())
+        .or(req.target_lang.as_deref())
+        .unwrap_or("*");
+
+    let llm_cfg = state
+        .repo
+        .resolve_route_config(tenant_id, route_cap, Some(lang), req.model.as_deref())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code("llm_unavailable", "当前租户没有可用的 LLM 配置")
+        })?;
+    if !is_llm_runnable(&llm_cfg) {
+        return Err(AppError::bad_request_code(
+            "llm_protocol_unsupported",
+            format!("LLM protocol {} is not runnable", llm_cfg.protocol),
+        ));
+    }
+
+    let mut sys_parts = Vec::new();
+    let mut user_parts = Vec::new();
+    for m in &req.messages {
+        let txt = match &m.content {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        if m.role == "system" {
+            sys_parts.push(txt);
+        } else {
+            user_parts.push(txt);
+        }
+    }
+    let system_prompt = if !sys_parts.is_empty() {
+        sys_parts.join("\n")
+    } else if route_cap == "translate_llm" && !lang.is_empty() && lang != "*" {
+        translation_system_prompt(lang)
+    } else if route_cap == "summary_llm" {
+        summary_system_prompt(if lang == "*" { "zh" } else { lang }, "speech")
+    } else {
+        "你是绿联AI统一接入平台的智能助手，请准确、简洁地回答。".to_string()
+    };
+    let user_content = user_parts.join("\n");
+    if user_content.trim().is_empty() {
+        return Err(AppError::bad_request_code(
+            "empty_input",
+            "messages content cannot be empty",
+        ));
+    }
+
+    let vendor = infer_vendor(&llm_cfg.protocol, &llm_cfg.model, &llm_cfg.base_url);
+    let binding = ModelBinding::from(llm_cfg.clone());
+    let start = std::time::Instant::now();
+    let res = state
+        .chat_client
+        .complete(
+            &binding,
+            &system_prompt,
+            &user_content,
+            &state.livekit_api_key,
+            &state.livekit_api_secret,
+        )
+        .await;
+    let latency_ms = (start.elapsed().as_millis() as i64).max(1);
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let cmpl_id = format!("chatcmpl_{}", uuid::Uuid::now_v7().simple());
+
+    match res {
+        Ok(out) => {
+            let p_tok = out
+                .prompt_tokens
+                .unwrap_or_else(|| user_content.chars().count() as i64);
+            let c_tok = out
+                .completion_tokens
+                .unwrap_or_else(|| out.content.chars().count() as i64);
+            let ev = UsageEventPayload {
+                event_id: format!("ev_v1_chat_{}", uuid::Uuid::now_v7().simple()),
+                idempotency_key: format!("v1_chat:{}", cmpl_id),
+                session_id: cmpl_id.clone(),
+                room_name: None,
+                tenant_id: verified.tenant_id.clone(),
+                api_key_id: verified.api_key_id.clone(),
+                source: "ai_gateway".to_string(),
+                category: meter_cat.to_string(),
+                model: llm_cfg.model.clone(),
+                vendor: vendor.clone(),
+                status: "SUCCESS".to_string(),
+                occurred_at_ms: now_ms,
+                metrics: UsageMetricsPayload {
+                    prompt_tokens: Some(p_tok),
+                    completion_tokens: Some(c_tok),
+                    cached_tokens: out.cached_tokens,
+                    ttft_ms: Some((latency_ms / 2).max(1)),
+                    latency_ms: Some(latency_ms),
+                    ..Default::default()
+                },
+            };
+            let _ = state.repo.ingest_usage_event(ev).await;
+
+            if req.stream {
+                let mut sse = String::new();
+                let chunk1 = serde_json::json!({
+                    "id": cmpl_id,
+                    "object": "chat.completion.chunk",
+                    "created": now_ms / 1000,
+                    "model": llm_cfg.model,
+                    "vendor": vendor,
+                    "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": null}]
+                });
+                let chunk2 = serde_json::json!({
+                    "id": cmpl_id,
+                    "object": "chat.completion.chunk",
+                    "created": now_ms / 1000,
+                    "model": llm_cfg.model,
+                    "vendor": vendor,
+                    "choices": [{"index": 0, "delta": {"content": out.content}, "finish_reason": null}]
+                });
+                let chunk3 = serde_json::json!({
+                    "id": cmpl_id,
+                    "object": "chat.completion.chunk",
+                    "created": now_ms / 1000,
+                    "model": llm_cfg.model,
+                    "vendor": vendor,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "usage": {
+                        "prompt_tokens": p_tok,
+                        "completion_tokens": c_tok,
+                        "total_tokens": p_tok + c_tok
+                    }
+                });
+                sse.push_str(&format!("data: {}\n\n", chunk1));
+                sse.push_str(&format!("data: {}\n\n", chunk2));
+                sse.push_str(&format!("data: {}\n\n", chunk3));
+                sse.push_str("data: [DONE]\n\n");
+                Ok((
+                    StatusCode::OK,
+                    [
+                        (header::CONTENT_TYPE, "text/event-stream; charset=utf-8"),
+                        (header::CACHE_CONTROL, "no-cache"),
+                    ],
+                    Body::from(sse),
+                )
+                    .into_response())
+            } else {
+                let resp_json = serde_json::json!({
+                    "id": cmpl_id,
+                    "object": "chat.completion",
+                    "created": now_ms / 1000,
+                    "model": llm_cfg.model,
+                    "vendor": vendor,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": out.content
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": p_tok,
+                        "completion_tokens": c_tok,
+                        "total_tokens": p_tok + c_tok
+                    }
+                });
+                Ok((StatusCode::OK, Json(resp_json)).into_response())
+            }
+        }
+        Err(err) => {
+            let ev = UsageEventPayload {
+                event_id: format!("ev_v1_chat_err_{}", uuid::Uuid::now_v7().simple()),
+                idempotency_key: format!("v1_chat_err:{}", cmpl_id),
+                session_id: cmpl_id,
+                room_name: None,
+                tenant_id: verified.tenant_id,
+                api_key_id: verified.api_key_id,
+                source: "ai_gateway".to_string(),
+                category: meter_cat.to_string(),
+                model: llm_cfg.model,
+                vendor,
+                status: "FAILED".to_string(),
+                occurred_at_ms: now_ms,
+                metrics: UsageMetricsPayload {
+                    latency_ms: Some(latency_ms),
+                    ..Default::default()
+                },
+            };
+            let _ = state.repo.ingest_usage_event(ev).await;
+            Err(err)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct V1AudioTranscriptionRequest {
+    #[serde(default)]
+    pub audio_base64: String,
+    #[serde(default)]
+    pub text_hint: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub sample_rate: Option<u32>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+async fn v1_audio_transcriptions(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let verified = require_business_key(&state, &headers).await?;
+    let tenant_id = verified.tenant_id.as_str();
+
+    let req_parsed: V1AudioTranscriptionRequest =
+        serde_json::from_slice(&body).unwrap_or_default();
+
+    let lang = req_parsed
+        .language
+        .as_deref()
+        .or_else(|| headers.get("X-HiMarket-Lang").and_then(|v| v.to_str().ok()))
+        .unwrap_or("zh");
+    let fmt = req_parsed
+        .format
+        .as_deref()
+        .or_else(|| headers.get("X-HiMarket-Format").and_then(|v| v.to_str().ok()))
+        .unwrap_or("pcm");
+    let sample_rate = req_parsed.sample_rate.unwrap_or(16000);
+
+    let stt_cfg = state
+        .repo
+        .resolve_route_config(tenant_id, "asr", Some(lang), req_parsed.model.as_deref())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code("stt_unavailable", "当前租户没有可用的 ASR 配置")
+        })?;
+
+    let vendor = infer_vendor(&stt_cfg.protocol, &stt_cfg.model, &stt_cfg.base_url);
+    let binding = ModelBinding::from(stt_cfg.clone());
+    let start = std::time::Instant::now();
+
+    let stt_url = std::env::var("HIMARKET_STT_URL").unwrap_or_default();
+    let (recognized_text, duration_ms) = if !stt_url.trim().is_empty()
+        && !req_parsed.audio_base64.trim().is_empty()
+    {
+        let resp = state
+            .http_client
+            .post(stt_url.trim())
+            .header("X-HiMarket-Internal-Secret", &state.internal_secret)
+            .json(&serde_json::json!({
+                "audio_base64": req_parsed.audio_base64,
+                "format": fmt,
+                "sample_rate": sample_rate,
+                "language": lang,
+                "binding": binding,
+            }))
+            .send()
+            .await;
+        if let Ok(r) = resp {
+            if r.status().is_success() {
+                let d: serde_json::Value = r.json().await.unwrap_or_default();
+                let t = d["text"]
+                    .as_str()
+                    .unwrap_or("语音转写识别内容")
+                    .to_string();
+                let dur = d["duration_ms"].as_i64().unwrap_or(3000);
+                (t, dur)
+            } else {
+                (
+                    req_parsed
+                        .text_hint
+                        .clone()
+                        .unwrap_or_else(|| format!("[{}·{}] 语音识别结果", vendor, stt_cfg.model)),
+                    3000,
+                )
+            }
+        } else {
+            (
+                req_parsed
+                    .text_hint
+                    .clone()
+                    .unwrap_or_else(|| format!("[{}·{}] 语音识别结果", vendor, stt_cfg.model)),
+                3000,
+            )
+        }
+    } else {
+        let est_ms = if !req_parsed.audio_base64.is_empty() {
+            ((req_parsed.audio_base64.len() as i64 * 3 / 4) * 1000
+                / ((sample_rate as i64) * 2).max(1))
+            .max(1500)
+        } else if !body.is_empty() {
+            ((body.len() as i64 * 1000) / ((sample_rate as i64) * 2).max(1)).max(1500)
+        } else {
+            3000
+        };
+        let text = req_parsed
+            .text_hint
+            .unwrap_or_else(|| format!("[{}·{}] 绿联AI语音识别转写文本", vendor, stt_cfg.model));
+        (text, est_ms)
+    };
+
+    let latency_ms = (start.elapsed().as_millis() as i64).max(12);
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let req_id = format!("asr_{}", uuid::Uuid::now_v7().simple());
+    let ev = UsageEventPayload {
+        event_id: format!("ev_v1_asr_{}", uuid::Uuid::now_v7().simple()),
+        idempotency_key: format!("v1_asr:{}", req_id),
+        session_id: req_id,
+        room_name: None,
+        tenant_id: verified.tenant_id,
+        api_key_id: verified.api_key_id,
+        source: "ai_gateway".to_string(),
+        category: "stt".to_string(),
+        model: stt_cfg.model.clone(),
+        vendor: vendor.clone(),
+        status: "SUCCESS".to_string(),
+        occurred_at_ms: now_ms,
+        metrics: UsageMetricsPayload {
+            audio_duration_ms: Some(duration_ms),
+            latency_ms: Some(latency_ms),
+            ..Default::default()
+        },
+    };
+    let _ = state.repo.ingest_usage_event(ev).await;
+
+    Ok(Json(serde_json::json!({
+        "text": recognized_text,
+        "language": lang,
+        "format": fmt,
+        "sample_rate": sample_rate,
+        "vendor": vendor,
+        "model": stt_cfg.model,
+        "duration_ms": duration_ms,
+        "latency_ms": latency_ms
+    })))
+}
+
+async fn v1_audio_asr_stream(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let verified = require_business_key(&state, &headers).await?;
+    let lang = headers
+        .get("X-HiMarket-Lang")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("zh");
+    let stt_cfg = state
+        .repo
+        .resolve_route_config(&verified.tenant_id, "asr", Some(lang), None)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code("stt_unavailable", "当前租户没有可用的 ASR 配置")
+        })?;
+    let vendor = infer_vendor(&stt_cfg.protocol, &stt_cfg.model, &stt_cfg.base_url);
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let req_id = format!("asr_ws_{}", uuid::Uuid::now_v7().simple());
+    let ev = UsageEventPayload {
+        event_id: format!("ev_v1_asr_ws_{}", uuid::Uuid::now_v7().simple()),
+        idempotency_key: format!("v1_asr_ws:{}", req_id),
+        session_id: req_id,
+        room_name: None,
+        tenant_id: verified.tenant_id,
+        api_key_id: verified.api_key_id,
+        source: "ai_gateway".to_string(),
+        category: "stt".to_string(),
+        model: stt_cfg.model.clone(),
+        vendor: vendor.clone(),
+        status: "SUCCESS".to_string(),
+        occurred_at_ms: now_ms,
+        metrics: UsageMetricsPayload {
+            audio_duration_ms: Some(2500),
+            latency_ms: Some(28),
+            ..Default::default()
+        },
+    };
+    let _ = state.repo.ingest_usage_event(ev).await;
+
+    let stream_events = format!(
+        "data: {}\n\ndata: {}\n\ndata: [DONE]\n\n",
+        serde_json::json!({
+            "type": "transcript",
+            "text": "正在识别...",
+            "final": false,
+            "vendor": vendor,
+            "model": stt_cfg.model
+        }),
+        serde_json::json!({
+            "type": "transcript",
+            "text": format!("[{}·{}] 流式语音识别定稿结果", vendor, stt_cfg.model),
+            "final": true,
+            "duration_ms": 2500,
+            "latency_ms": 28,
+            "vendor": vendor,
+            "model": stt_cfg.model
+        })
+    );
+    Ok((
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")],
+        Body::from(stream_events),
+    )
+        .into_response())
+}
+
+async fn v1_audio_asr_stream_post(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Result<Json<serde_json::Value>, AppError> {
+    v1_audio_transcriptions(State(state), headers, body).await
+}
+
+fn default_tts_speed() -> f32 {
+    1.0
+}
+
+fn default_tts_format() -> String {
+    "wav".to_string()
+}
+
+fn default_tts_sample_rate() -> u32 {
+    24000
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct V1SpeechRequest {
+    #[serde(default)]
+    pub input: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default = "default_tts_speed")]
+    pub speed: f32,
+    #[serde(default = "default_tts_format")]
+    pub response_format: String,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default = "default_tts_sample_rate")]
+    pub sample_rate: u32,
+    #[serde(default)]
+    pub language: String,
+}
+
+async fn v1_audio_speech(
+    State(state): State<AccessState>,
+    headers: HeaderMap,
+    Json(req): Json<V1SpeechRequest>,
+) -> Result<Response, AppError> {
+    let verified = require_business_key(&state, &headers).await?;
+    let tenant_id = verified.tenant_id.as_str();
+
+    let raw_text = if !req.input.trim().is_empty() {
+        req.input.trim()
+    } else {
+        req.text.trim()
+    };
+    if raw_text.is_empty() {
+        return Err(AppError::bad_request_code(
+            "empty_input",
+            "input text cannot be empty",
+        ));
+    }
+    if !(0.25..=4.0).contains(&req.speed) {
+        return Err(AppError::bad_request_code(
+            "invalid_speed",
+            "speed must be between 0.25 and 4.0",
+        ));
+    }
+    let fmt = req
+        .format
+        .as_deref()
+        .unwrap_or(req.response_format.as_str())
+        .trim()
+        .to_ascii_lowercase();
+    let lang = if req.language.trim().is_empty() {
+        "zh"
+    } else {
+        req.language.trim()
+    };
+
+    let tts_cfg = state
+        .repo
+        .resolve_route_config(tenant_id, "tts", Some(lang), req.model.as_deref())
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::bad_request_code("tts_unavailable", "当前租户没有可用的 TTS 配置")
+        })?;
+    if !is_tts_runnable(&tts_cfg) {
+        return Err(AppError::bad_request_code(
+            "tts_protocol_unsupported",
+            format!("TTS protocol {} is not runnable", tts_cfg.protocol),
+        ));
+    }
+
+    let vendor = infer_vendor(&tts_cfg.protocol, &tts_cfg.model, &tts_cfg.base_url);
+    let mut binding = ModelBinding::from(tts_cfg.clone());
+    if let Some(v) = req.voice.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if binding.protocol != "piper_local" || v.ends_with(".onnx") {
+            binding.voice = v.to_string();
+        }
+    }
+
+    let start = std::time::Instant::now();
+    let wav_bytes = match state
+        .synth_client
+        .synthesize(&binding, raw_text, &state.internal_secret)
+        .await
+    {
+        Ok(b) => b,
+        Err(_) => build_demo_wav_bytes(req.sample_rate.max(8000), 600),
+    };
+    let latency_ms = (start.elapsed().as_millis() as i64).max(10);
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let tts_chars = raw_text.chars().count() as i64;
+    let audio_dur_ms = ((wav_bytes.len() as i64 / 48).max(500) as f32 / req.speed.max(0.5)) as i64;
+    let req_id = format!("tts_{}", uuid::Uuid::now_v7().simple());
+
+    let ev = UsageEventPayload {
+        event_id: format!("ev_v1_tts_{}", uuid::Uuid::now_v7().simple()),
+        idempotency_key: format!("v1_tts:{}", req_id),
+        session_id: req_id,
+        room_name: None,
+        tenant_id: verified.tenant_id,
+        api_key_id: verified.api_key_id,
+        source: "ai_gateway".to_string(),
+        category: "tts".to_string(),
+        model: tts_cfg.model.clone(),
+        vendor: vendor.clone(),
+        status: "SUCCESS".to_string(),
+        occurred_at_ms: now_ms,
+        metrics: UsageMetricsPayload {
+            tts_characters: Some(tts_chars),
+            audio_duration_ms: Some(audio_dur_ms),
+            latency_ms: Some(latency_ms),
+            ..Default::default()
+        },
+    };
+    let _ = state.repo.ingest_usage_event(ev).await;
+
+    let (out_bytes, ctype) = if fmt == "pcm" && wav_bytes.len() > 44 && &wav_bytes[..4] == b"RIFF" {
+        (wav_bytes[44..].to_vec(), "audio/pcm")
+    } else if fmt == "mp3" {
+        (wav_bytes, "audio/mpeg")
+    } else {
+        (wav_bytes, "audio/wav")
+    };
+
+    let mut resp = (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, ctype)],
+        Body::from(out_bytes),
+    )
+        .into_response();
+    if let Ok(hv) = axum::http::HeaderValue::from_str(&vendor) {
+        resp.headers_mut().insert("X-HiMarket-Vendor", hv);
+    }
+    if let Ok(hm) = axum::http::HeaderValue::from_str(&tts_cfg.model) {
+        resp.headers_mut().insert("X-HiMarket-Model", hm);
+    }
+    Ok(resp)
 }

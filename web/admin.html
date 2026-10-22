@@ -8,10 +8,11 @@
 </head>
 <body>
   <header>
-    <strong>HiMarket 管理后台</strong>
+    <strong>绿联 AI 统一接入平台 · 管理后台</strong>
     <span id="who">未登录</span>
-    <a href="/portal">开发者门户</a>
+    <a href="/portal">业务线门户（只读）</a>
   </header>
+  <div id="alert-banner" style="margin: 10px 20px;"></div>
   <div id="login" class="card">
     <h2>管理员登录</h2>
     <input id="username" value="admin" />
@@ -21,48 +22,77 @@
   </div>
   <div id="app" hidden>
     <nav>
-      <button data-panel="portals" class="active">门户</button>
-      <button data-panel="products">产品</button>
-      <button data-panel="consumers">调用方</button>
-      <button data-panel="keys">API Key</button>
+      <button data-panel="routes" class="active">路由配置</button>
+      <button data-panel="keys">业务线与额度</button>
+      <button data-panel="models">供应商与模型</button>
+      <button data-panel="usage">三维度用量报表</button>
       <button data-panel="sessions">语音会话</button>
-      <button data-panel="models">模型配置</button>
-      <button data-panel="usage">用量</button>
+      <button data-panel="consumers">调用方</button>
+      <button data-panel="portals">门户</button>
+      <button data-panel="products">产品</button>
     </nav>
-    <section data-panel="portals">
-      <form id="portal-form"><input name="name" placeholder="门户名称" required /><input name="description" placeholder="说明" /><button>新建门户</button></form>
-      <div id="portals"></div>
+
+    <section data-panel="routes">
+      <form id="route-form">
+        <input name="tenant_id" value="tenant_ugreen_01" placeholder="租户 ID" required />
+        <select name="capability">
+          <option value="asr">ASR 语音识别</option>
+          <option value="translate_llm">翻译 LLM</option>
+          <option value="summary_llm">总结 LLM</option>
+          <option value="chat_llm">对话 LLM</option>
+          <option value="tts">TTS 语音合成</option>
+          <option value="realtime">Realtime 实时通话</option>
+        </select>
+        <input name="language" value="*" placeholder="语种（* 表示全部，或 zh/en/ja）" required />
+        <input name="config_id" placeholder="目标模型 ID 或模型名，如 qwen3.8-max / chirp_3" required />
+        <button>一键切换路由</button>
+      </form>
+      <div style="margin: 8px 0;">
+        <span>供应商批量启停：</span>
+        <button type="button" data-vendor-toggle="aliyun:ACTIVE">启用阿里云</button>
+        <button type="button" data-vendor-toggle="aliyun:DISABLED">停用阿里云</button>
+        <button type="button" data-vendor-toggle="volcengine:ACTIVE">启用字节火山</button>
+        <button type="button" data-vendor-toggle="volcengine:DISABLED">停用字节火山</button>
+        <button type="button" data-vendor-toggle="azure:ACTIVE">启用微软Azure</button>
+        <button type="button" data-vendor-toggle="google:ACTIVE">启用谷歌GCP</button>
+      </div>
+      <div id="routes"></div>
     </section>
-    <section data-panel="products" hidden>
-      <form id="product-form"><input name="name" placeholder="产品名称" required /><select name="product_type"><option>AGENT_API</option><option>MODEL_API</option><option>REST_API</option><option>MCP_SERVER</option><option>AGENT_SKILL</option><option>WORKER</option></select><button>发布产品</button></form>
-      <div id="products"></div>
-    </section>
-    <section data-panel="consumers" hidden>
-      <form id="consumer-form"><input name="name" placeholder="调用方名称" required /><input name="developer_id" placeholder="开发者 ID，默认 tenant_ugreen_01" /><button>新建调用方</button></form>
-      <div id="consumers"></div>
-    </section>
+
     <section data-panel="keys" hidden>
-      <form id="key-form"><input name="consumer_id" placeholder="调用方 ID" required /><button>签发 API Key</button></form>
+      <form id="key-form">
+        <input name="consumer_id" placeholder="调用方 ID，如 cons_android_app" value="cons_android_app" required />
+        <button>签发业务线 API Key</button>
+      </form>
       <p id="new-key"></p>
+      <form id="quota-form">
+        <input name="api_key_id" placeholder="API Key ID" value="ak_live_ugreen_01" required />
+        <input name="quota_limit_calls" type="number" placeholder="月度调用次数上限（可空）" />
+        <input name="quota_limit_tokens" type="number" placeholder="月度 Token 上限（可空）" />
+        <input name="alert_threshold_pct" type="number" value="80" placeholder="告警阈值%" />
+        <input name="alert_webhook_url" placeholder="告警通知 Webhook / 邮件地址（可选）" />
+        <label><input name="reset_used" type="checkbox" /> 重置已用计数</label>
+        <button>保存额度设置</button>
+      </form>
       <div id="keys"></div>
     </section>
-    <section data-panel="sessions" hidden><div id="sessions"></div></section>
+
     <section data-panel="models" hidden>
       <form id="lang-policy-form">
         <input name="tenant_id" placeholder="租户 ID" value="tenant_ugreen_01" required />
         <input name="default_target_lang" placeholder="默认目标语言，如 zh" value="zh" required />
-        <input name="allowed_langs" placeholder="允许语言列表，逗号分隔" value="zh,en,ja,ko" required />
+        <input name="allowed_langs" placeholder="允许语言列表，逗号分隔" value="zh,de,en,es,fr,id,it,ja,ko" required />
         <button>保存租户语言策略</button>
       </form>
       <p id="lang-policy-view"></p>
       <form id="model-form">
         <input name="tenant_id" placeholder="租户 ID" value="tenant_ugreen_01" required />
         <input name="name" placeholder="名称" required />
-        <select name="kind"><option value="llm">LLM</option><option value="stt">STT</option><option value="tts">TTS</option></select>
+        <select name="kind"><option value="llm">LLM</option><option value="stt">STT</option><option value="tts">TTS</option><option value="realtime">Realtime</option></select>
         <select name="protocol"><option value="livekit_inference">LiveKit Inference</option><option value="livekit_realtime">LiveKit Realtime</option><option value="openai_chat">OpenAI Chat</option><option value="openai_stt">OpenAI STT</option><option value="openai_tts">OpenAI TTS</option><option value="openai_realtime">OpenAI Realtime</option><option value="google_stt">Google Chirp</option><option value="google_tts">Google Gemini TTS</option><option value="google_realtime">Google Gemini Live</option><option value="azure_tts">Azure Speech</option><option value="dashscope_stt">阿里云 ASR</option><option value="dashscope_tts">阿里云 TTS</option><option value="dashscope_realtime">阿里云 Realtime</option><option value="volcengine_stt">火山 ASR</option><option value="volcengine_tts">火山 TTS</option><option value="volcengine_realtime">火山 Realtime</option><option value="whisper_local">本地 Whisper</option><option value="piper_local">本地 Piper</option></select>
         <input name="base_url" placeholder="API 地址" />
-        <input name="api_key" placeholder="API Key" />
-        <input name="api_secret" placeholder="API Secret（LiveKit Inference 需要）" />
+        <input name="api_key" placeholder="API Key（自动加密存储）" />
+        <input name="api_secret" placeholder="API Secret（自动加密存储）" />
         <input name="model" placeholder="模型名" required />
         <input name="voice" placeholder="音色或本地模型路径" />
         <input name="tts_languages" placeholder="适用TTS语言，逗号分隔（可选）" />
@@ -73,9 +103,9 @@
       <form id="credential-form">
         <input name="config_id" placeholder="配置 ID" required />
         <input name="base_url" placeholder="覆盖 API 地址，可空" />
-        <input name="api_key" placeholder="写入 API Key" />
-        <input name="api_secret" placeholder="写入 API Secret" />
-        <button>保存密钥</button>
+        <input name="api_key" placeholder="写入 API Key（加密落库）" />
+        <input name="api_secret" placeholder="写入 API Secret（加密落库）" />
+        <button>保存加密密钥</button>
       </form>
       <form id="model-lang-form">
         <input name="config_id" placeholder="配置 ID" required />
@@ -85,7 +115,48 @@
       </form>
       <div id="models"></div>
     </section>
-    <section data-panel="usage" hidden><div id="usage"></div></section>
+
+    <section data-panel="usage" hidden>
+      <form id="usage-filter-form">
+        <input name="date" placeholder="按日查询 YYYY-MM-DD（空为全部日期）" />
+        <input name="api_key_id" placeholder="按业务线 Key 筛选（可选）" />
+        <select name="category">
+          <option value="">全部能力</option>
+          <option value="stt">ASR 语音识别 (stt)</option>
+          <option value="translate">翻译 LLM (translate)</option>
+          <option value="summary">总结 LLM (summary)</option>
+          <option value="text_llm">对话 LLM (text_llm)</option>
+          <option value="tts">TTS 语音合成 (tts)</option>
+          <option value="rtc">实时音视频 (rtc)</option>
+        </select>
+        <select name="vendor">
+          <option value="">全部供应商</option>
+          <option value="aliyun">阿里云 (aliyun)</option>
+          <option value="volcengine">字节火山 (volcengine)</option>
+          <option value="azure">微软 Azure (azure)</option>
+          <option value="google">谷歌 GCP (google)</option>
+          <option value="ollama">Ollama (ollama)</option>
+          <option value="local">本地引擎 (local)</option>
+        </select>
+        <button>查询报表</button>
+      </form>
+      <div id="usage-cards" style="display:flex; gap:12px; flex-wrap:wrap; margin:12px 0;"></div>
+      <div id="usage"></div>
+    </section>
+
+    <section data-panel="sessions" hidden><div id="sessions"></div></section>
+    <section data-panel="consumers" hidden>
+      <form id="consumer-form"><input name="name" placeholder="业务线调用方名称" required /><input name="developer_id" placeholder="租户 ID，默认 tenant_ugreen_01" value="tenant_ugreen_01" /><button>新建业务线调用方</button></form>
+      <div id="consumers"></div>
+    </section>
+    <section data-panel="portals" hidden>
+      <form id="portal-form"><input name="name" placeholder="门户名称" required /><input name="description" placeholder="说明" /><button>新建门户</button></form>
+      <div id="portals"></div>
+    </section>
+    <section data-panel="products" hidden>
+      <form id="product-form"><input name="name" placeholder="产品名称" required /><select name="product_type"><option>AGENT_API</option><option>MODEL_API</option><option>REST_API</option><option>MCP_SERVER</option><option>AGENT_SKILL</option><option>WORKER</option></select><button>发布产品</button></form>
+      <div id="products"></div>
+    </section>
   </div>
   <script src="/console.js"></script>
   <script>
@@ -98,15 +169,66 @@
         enter(session);
       } catch (error) { document.getElementById("login-error").textContent = error.message; }
     };
+    async function refreshAlerts() {
+      try {
+        const alerts = await api("/api/v1/alerts");
+        const banner = document.getElementById("alert-banner");
+        if (!alerts || !alerts.length) {
+          banner.innerHTML = "";
+          return;
+        }
+        banner.innerHTML = alerts.slice(0, 3).map(a =>
+          `<div style="padding:10px 14px; margin-bottom:6px; border-radius:8px; background:${a.level === 'CRITICAL_100' ? '#fee2e2' : '#fef3c7'}; color:${a.level === 'CRITICAL_100' ? '#991b1b' : '#92400e'}; font-weight:600;">
+            [${a.level}] ${a.message}（通知渠道：${a.notified_channel}）
+          </div>`
+        ).join("");
+      } catch (_) {}
+    }
     function enter(session) {
-      login.hidden = true; app.hidden = false; who.textContent = session.username;
-      load("portals");
+      login.hidden = true; app.hidden = false; who.textContent = session.username + " (管理员)";
+      refreshAlerts();
+      load("routes");
     }
     async function load(panel) {
+      await refreshAlerts();
+      if (panel === "routes") {
+        const rows = await api("/api/v1/routes?tenant_id=tenant_ugreen_01");
+        routes.innerHTML = table([
+          ["能力", r => r.capability],
+          ["语种", r => r.language],
+          ["当前供应商", r => `<strong>${r.vendor}</strong>`],
+          ["模型名称", r => r.name],
+          ["模型 ID", r => `<code>${r.model}</code>`],
+          ["协议", r => r.protocol],
+          ["配置 ID", r => `<code>${r.config_id}</code>`],
+          ["状态", r => r.status],
+          ["更新时间", r => r.updated_at || ""]
+        ], rows);
+      }
+      if (panel === "keys") {
+        const rows = await api("/api/v1/api-keys");
+        keys.innerHTML = table([
+          ["Key ID", r => `<code>${r.api_key_id}</code>`],
+          ["调用方", r => r.consumer_id],
+          ["租户", r => r.tenant_id],
+          ["状态", r => r.status === "ACTIVE" ? "🟢 ACTIVE" : "🔴 DISABLED"],
+          ["月度调用次数 (已用/上限)", r => `${r.quota_used_calls || 0} / ${r.quota_limit_calls != null ? r.quota_limit_calls : "不限"}`],
+          ["月度 Token (已用/上限)", r => `${r.quota_used_tokens || 0} / ${r.quota_limit_tokens != null ? r.quota_limit_tokens : "不限"}`],
+          ["已用微美元", r => r.quota_used_usd_micros],
+          ["告警阈值", r => `${r.alert_threshold_pct || 80}%`],
+          ["操作", r => r.status === "ACTIVE"
+            ? `<button data-key-status="${r.api_key_id}:DISABLED">停用业务线</button>`
+            : `<button data-key-status="${r.api_key_id}:ACTIVE">启用业务线</button>`]
+        ], rows);
+        keys.querySelectorAll("[data-key-status]").forEach((btn) => btn.onclick = async () => {
+          const [id, st] = btn.dataset.keyStatus.split(":");
+          await api("/api/v1/api-keys/" + id + "/status", { method: "POST", body: JSON.stringify({ status: st }) });
+          load("keys");
+        });
+      }
       if (panel === "portals") portals.innerHTML = table([["ID", r => r.portal_id], ["名称", r => r.name], ["说明", r => r.description || ""]], await api("/api/v1/portals"));
       if (panel === "products") products.innerHTML = table([["ID", r => r.product_id], ["名称", r => r.name], ["类型", r => r.product_type], ["状态", r => r.status]], await api("/api/v1/products"));
       if (panel === "consumers") consumers.innerHTML = table([["ID", r => r.consumer_id], ["名称", r => r.name], ["开发者", r => r.developer_id]], await api("/api/v1/consumers"));
-      if (panel === "keys") keys.innerHTML = table([["Key ID", r => r.api_key_id], ["调用方", r => r.consumer_id], ["租户", r => r.tenant_id], ["已用微美元", r => r.quota_used_usd_micros]], await api("/api/v1/api-keys"));
       if (panel === "sessions") sessions.innerHTML = table([
         ["会话", r => r.session_id],
         ["房间", r => r.room_name || ""],
@@ -128,19 +250,88 @@
         }
         const rows = await api("/api/v1/model-configs?tenant_id=" + encodeURIComponent(tenant));
         models.innerHTML = table([
-          ["ID", r => r.config_id], ["租户", r => r.tenant_id], ["名称", r => r.name], ["类型", r => r.kind], ["协议", r => r.protocol], ["模型", r => r.model],
+          ["ID", r => r.config_id], ["供应商", r => r.vendor || ""], ["名称", r => r.name], ["类型", r => r.kind], ["协议", r => r.protocol], ["模型", r => r.model],
           ["TTS语言", r => (r.tts_languages || []).join(",")], ["STT语言", r => (r.stt_languages || []).join(",")],
-          ["地址", r => r.base_url], ["密钥", r => r.api_key_hint], ["Secret", r => r.has_api_secret ? "已设置" : ""], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status],
-          ["操作", r => r.status === "ACTIVE" ? `<button data-default="${r.config_id}">默认</button> <button data-disable="${r.config_id}">停用</button>` : ""]
+          ["密钥(加密)", r => r.encrypted ? `🔒 ${r.api_key_hint || "已加密"}` : ""], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status],
+          ["操作", r => r.status === "ACTIVE"
+            ? `<button data-default="${r.config_id}">默认</button> <button data-disable="${r.config_id}">停用</button>`
+            : `<button data-enable="${r.config_id}">启用</button>`]
         ], rows);
         models.querySelectorAll("[data-default]").forEach((button) => button.onclick = async () => { await api("/api/v1/model-configs/" + button.dataset.default + "/default", { method: "POST" }); load("models"); });
         models.querySelectorAll("[data-disable]").forEach((button) => button.onclick = async () => { await api("/api/v1/model-configs/" + button.dataset.disable + "/disable", { method: "POST" }); load("models"); });
+        models.querySelectorAll("[data-enable]").forEach((button) => button.onclick = async () => { await api("/api/v1/model-configs/" + button.dataset.enable + "/enable", { method: "POST" }); load("models"); });
       }
       if (panel === "usage") {
-        const data = await api("/api/v1/usage/summary?tenant_id=tenant_ugreen_01");
-        usage.innerHTML = "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
+        const form = document.getElementById("usage-filter-form");
+        const params = new URLSearchParams({ tenant_id: "tenant_ugreen_01" });
+        if (form.date.value.trim()) params.set("date", form.date.value.trim());
+        if (form.api_key_id.value.trim()) params.set("api_key_id", form.api_key_id.value.trim());
+        if (form.category.value) params.set("category", form.category.value);
+        if (form.vendor.value) params.set("vendor", form.vendor.value);
+        const rep = await api("/api/v1/usage/report?" + params.toString());
+        document.getElementById("usage-cards").innerHTML = [
+          ["总调用次数", rep.total_calls],
+          ["成功 / 失败", `${rep.total_success} / ${rep.total_failed} (${rep.success_rate}%)`],
+          ["LLM 总 Token 数", rep.total_tokens],
+          ["ASR/TTS 音频总时长", `${Number(rep.total_audio_seconds || 0).toFixed(2)} 秒`],
+          ["平均延迟", `${rep.avg_latency_ms || 0} ms`]
+        ].map(([k, v]) => `<div class="card" style="min-width:150px; padding:10px 14px;"><div style="font-size:12px; color:#666;">${k}</div><div style="font-size:18px; font-weight:700; margin-top:4px;">${v}</div></div>`).join("");
+
+        usage.innerHTML = table([
+          ["日期", r => r.stat_date],
+          ["业务线", r => `${r.consumer_name} (${r.api_key_id})`],
+          ["能力", r => r.category],
+          ["供应商", r => `<strong>${r.vendor}</strong>`],
+          ["模型", r => `<code>${r.model}</code>`],
+          ["调用次数", r => r.call_count],
+          ["成功/失败", r => `${r.success_count}/${r.failure_count}`],
+          ["LLM Token数", r => r.total_tokens],
+          ["音频时长(秒)", r => Number(r.audio_seconds || 0).toFixed(2)],
+          ["平均延迟(ms)", r => r.avg_latency_ms]
+        ], rep.rows || []);
       }
     }
+    document.getElementById("route-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      await api("/api/v1/routes", {
+        method: "PUT",
+        body: JSON.stringify({
+          tenant_id: form.tenant_id.value || "tenant_ugreen_01",
+          capability: form.capability.value,
+          language: form.language.value || "*",
+          config_id: form.config_id.value.trim()
+        })
+      });
+      load("routes");
+    };
+    document.querySelectorAll("[data-vendor-toggle]").forEach((btn) => btn.onclick = async () => {
+      const [vendor, status] = btn.dataset.vendorToggle.split(":");
+      await api("/api/v1/vendors/" + vendor + "/status", { method: "POST", body: JSON.stringify({ tenant_id: "tenant_ugreen_01", status }) });
+      load("routes");
+    });
+    document.getElementById("quota-form").onsubmit = async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const callsVal = form.quota_limit_calls.value.trim();
+      const tokVal = form.quota_limit_tokens.value.trim();
+      const thrVal = form.alert_threshold_pct.value.trim();
+      await api("/api/v1/api-keys/" + form.api_key_id.value.trim() + "/quota", {
+        method: "PUT",
+        body: JSON.stringify({
+          quota_limit_calls: callsVal ? Number(callsVal) : null,
+          quota_limit_tokens: tokVal ? Number(tokVal) : null,
+          alert_threshold_pct: thrVal ? Number(thrVal) : 80,
+          alert_webhook_url: form.alert_webhook_url.value.trim() || null,
+          reset_used: form.reset_used.checked
+        })
+      });
+      load("keys");
+    };
+    document.getElementById("usage-filter-form").onsubmit = async (event) => {
+      event.preventDefault();
+      load("usage");
+    };
     document.getElementById("portal-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/portals", { method: "POST", body: JSON.stringify({ name: form.name.value, description: form.description.value }) }); load("portals"); };
     document.getElementById("product-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/products", { method: "POST", body: JSON.stringify({ name: form.name.value, product_type: form.product_type.value }) }); load("products"); };
     document.getElementById("consumer-form").onsubmit = async (event) => { event.preventDefault(); const form = event.target; await api("/api/v1/consumers", { method: "POST", body: JSON.stringify({ name: form.name.value, developer_id: form.developer_id.value || "tenant_ugreen_01" }) }); load("consumers"); };

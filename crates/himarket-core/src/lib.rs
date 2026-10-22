@@ -166,6 +166,156 @@ pub fn sha256_hex(input: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+pub fn infer_vendor(protocol: &str, model: &str, base_url: &str) -> String {
+    let p = protocol.trim().to_ascii_lowercase();
+    let m = model.trim().to_ascii_lowercase();
+    let u = base_url.trim().to_ascii_lowercase();
+
+    if p.starts_with("dashscope")
+        || u.contains("dashscope.aliyuncs.com")
+        || m.starts_with("qwen")
+        || m.starts_with("paraformer")
+    {
+        return "aliyun".to_string();
+    }
+    if p.starts_with("volcengine")
+        || u.contains("volces.com")
+        || u.contains("bytedance.com")
+        || m.starts_with("doubao")
+        || m.starts_with("volc.")
+        || m.starts_with("seed-tts")
+        || m.starts_with("volc-tts")
+    {
+        return "volcengine".to_string();
+    }
+    if p == "azure_tts"
+        || u.contains("azure.com")
+        || u.contains("microsoft.com")
+        || m.starts_with("mai-voice")
+        || m.starts_with("azure-")
+        || m.contains("gpt-5.6")
+        || m.contains("gpt-realtime-2.1")
+    {
+        return "azure".to_string();
+    }
+    if p.starts_with("google")
+        || u.contains("googleapis.com")
+        || m.starts_with("gemini")
+        || m.starts_with("chirp")
+        || m.contains("google/")
+    {
+        return "google".to_string();
+    }
+    if p == "whisper_local"
+        || p == "piper_local"
+        || m.starts_with("faster-whisper")
+        || m.contains("huayan")
+    {
+        return "local".to_string();
+    }
+    if u.contains("ollama.com") || u.contains("11434") || m.contains("deepseek-v4.1") {
+        return "ollama".to_string();
+    }
+    if p.starts_with("openai")
+        || m.starts_with("gpt-")
+        || m.starts_with("whisper-")
+        || m.starts_with("tts-")
+        || m.starts_with("o1")
+        || m.starts_with("o3")
+    {
+        return "openai".to_string();
+    }
+    "local".to_string()
+}
+
+fn master_key_pair() -> ([u8; 32], [u8; 32]) {
+    let raw = std::env::var("HIMARKET_MASTER_KEY")
+        .unwrap_or_else(|_| "himarket-ugreen-default-master-key-2026-v1".to_string());
+    let mut h1 = Sha256::new();
+    h1.update(raw.as_bytes());
+    let enc_key: [u8; 32] = h1.finalize().into();
+
+    let mut h2 = Sha256::new();
+    h2.update(&enc_key);
+    h2.update(b":mac");
+    let mac_key: [u8; 32] = h2.finalize().into();
+    (enc_key, mac_key)
+}
+
+fn xor_keystream(enc_key: &[u8; 32], nonce: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    for (block_idx, chunk) in data.chunks(32).enumerate() {
+        let mut h = Sha256::new();
+        h.update(enc_key);
+        h.update(nonce);
+        h.update((block_idx as u32).to_be_bytes());
+        let stream_block = h.finalize();
+        for (b, k) in chunk.iter().zip(stream_block.iter()) {
+            out.push(b ^ k);
+        }
+    }
+    out
+}
+
+fn compute_auth_tag(mac_key: &[u8; 32], nonce: &[u8], ciphertext: &[u8]) -> [u8; 16] {
+    let mut h = Sha256::new();
+    h.update(mac_key);
+    h.update(nonce);
+    h.update(ciphertext);
+    let digest = h.finalize();
+    let mut tag = [0u8; 16];
+    tag.copy_from_slice(&digest[..16]);
+    tag
+}
+
+pub fn encrypt_secret(plaintext: &str) -> String {
+    if plaintext.is_empty() || plaintext.starts_with("enc:v1:") {
+        return plaintext.to_string();
+    }
+    let (enc_key, mac_key) = master_key_pair();
+    let u = uuid::Uuid::now_v7();
+    let nonce = &u.as_bytes()[..12];
+    let ciphertext = xor_keystream(&enc_key, nonce, plaintext.as_bytes());
+    let tag = compute_auth_tag(&mac_key, nonce, &ciphertext);
+    format!(
+        "enc:v1:{}:{}:{}",
+        hex::encode(nonce),
+        hex::encode(&ciphertext),
+        hex::encode(tag)
+    )
+}
+
+pub fn decrypt_secret(stored: &str) -> String {
+    let Some(rest) = stored.strip_prefix("enc:v1:") else {
+        return stored.to_string();
+    };
+    let parts: Vec<&str> = rest.split(':').collect();
+    if parts.len() != 3 {
+        return String::new();
+    }
+    let (Ok(nonce), Ok(ciphertext), Ok(tag)) = (
+        hex::decode(parts[0]),
+        hex::decode(parts[1]),
+        hex::decode(parts[2]),
+    ) else {
+        return String::new();
+    };
+    if nonce.len() != 12 || tag.len() != 16 {
+        return String::new();
+    }
+    let (enc_key, mac_key) = master_key_pair();
+    let expected_tag = compute_auth_tag(&mac_key, &nonce, &ciphertext);
+    let mut diff = 0u8;
+    for (a, b) in tag.iter().zip(expected_tag.iter()) {
+        diff |= a ^ b;
+    }
+    if diff != 0 {
+        return String::new();
+    }
+    let plain_bytes = xor_keystream(&enc_key, &nonce, &ciphertext);
+    String::from_utf8(plain_bytes).unwrap_or_default()
+}
+
 pub fn normalize_lang(raw: &str) -> Result<String, String> {
     let cleaned = raw.trim().replace('_', "-");
     if cleaned.is_empty() {
@@ -395,17 +545,50 @@ pub struct VerifiedBusinessKey {
     pub rate_limit_rpm: i32,
     pub quota_limit_usd_micros: Option<i64>,
     pub quota_used_usd_micros: i64,
+    #[serde(default)]
+    pub quota_limit_calls: Option<i64>,
+    #[serde(default)]
+    pub quota_used_calls: i64,
+    #[serde(default)]
+    pub quota_limit_tokens: Option<i64>,
+    #[serde(default)]
+    pub quota_used_tokens: i64,
 }
 
 impl VerifiedBusinessKey {
-    pub fn has_quota(&self) -> bool {
+    pub fn check_quota_error(&self) -> Result<(), String> {
         if self.status != "ACTIVE" {
-            return false;
+            return Err("business_line_disabled: 业务线已停用".to_string());
         }
-        match self.quota_limit_usd_micros {
-            Some(limit) => self.quota_used_usd_micros < limit,
-            None => true,
+        if let Some(limit) = self.quota_limit_calls {
+            if self.quota_used_calls >= limit {
+                return Err(format!(
+                    "quota_calls_exceeded: 业务线月度调用次数已达上限 ({}/{})",
+                    self.quota_used_calls, limit
+                ));
+            }
         }
+        if let Some(limit) = self.quota_limit_tokens {
+            if self.quota_used_tokens >= limit {
+                return Err(format!(
+                    "quota_tokens_exceeded: 业务线月度Token额度已达上限 ({}/{})",
+                    self.quota_used_tokens, limit
+                ));
+            }
+        }
+        if let Some(limit) = self.quota_limit_usd_micros {
+            if self.quota_used_usd_micros >= limit {
+                return Err(format!(
+                    "quota_exceeded: 业务线额度已用尽 ({}/{})",
+                    self.quota_used_usd_micros, limit
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn has_quota(&self) -> bool {
+        self.check_quota_error().is_ok()
     }
 }
 
@@ -492,6 +675,10 @@ pub struct UsageMetricsPayload {
     pub cost_usd_micros: i64,
 }
 
+fn default_usage_status() -> String {
+    "SUCCESS".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageEventPayload {
     pub event_id: String,
@@ -506,6 +693,10 @@ pub struct UsageEventPayload {
     pub source: String,
     pub category: String,
     pub model: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default = "default_usage_status")]
+    pub status: String,
     pub occurred_at_ms: i64,
     pub metrics: UsageMetricsPayload,
 }
@@ -569,9 +760,89 @@ pub struct TextLlmUsageBreakdown {
     pub cost_usd_micros: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageReportRow {
+    pub stat_date: String,
+    pub tenant_id: String,
+    pub api_key_id: String,
+    pub consumer_id: String,
+    pub consumer_name: String,
+    pub category: String,
+    pub vendor: String,
+    pub model: String,
+    pub call_count: i64,
+    pub success_count: i64,
+    pub failure_count: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub total_tokens: i64,
+    pub audio_duration_ms: i64,
+    pub audio_seconds: f64,
+    pub tts_characters: i64,
+    pub avg_latency_ms: i64,
+    pub cost_usd_micros: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageReportResponse {
+    pub tenant_id: String,
+    pub filter_date: Option<String>,
+    pub total_calls: i64,
+    pub total_success: i64,
+    pub total_failed: i64,
+    pub success_rate: f64,
+    pub total_tokens: i64,
+    pub total_audio_seconds: f64,
+    pub avg_latency_ms: i64,
+    pub total_cost_usd_micros: i64,
+    pub rows: Vec<UsageReportRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuotaAlertDto {
+    pub id: i64,
+    pub tenant_id: String,
+    pub api_key_id: String,
+    pub consumer_id: String,
+    pub level: String,
+    pub metric_type: String,
+    pub used_value: i64,
+    pub limit_value: i64,
+    pub usage_pct: i32,
+    pub notified_channel: String,
+    pub message: String,
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_encrypt_decrypt_secret_and_infer_vendor() {
+        let raw = "sk-test-ugreen-secret-2026";
+        let enc = encrypt_secret(raw);
+        assert!(enc.starts_with("enc:v1:"));
+        assert!(!enc.contains(raw));
+        assert_eq!(decrypt_secret(&enc), raw);
+        assert_eq!(encrypt_secret(&enc), enc);
+        assert_eq!(decrypt_secret("plain-legacy"), "plain-legacy");
+
+        assert_eq!(
+            infer_vendor("dashscope_stt", "qwen-audio-3.1-asr-flash-streaming", ""),
+            "aliyun"
+        );
+        assert_eq!(
+            infer_vendor("volcengine_tts", "seed-tts-2.0", ""),
+            "volcengine"
+        );
+        assert_eq!(infer_vendor("openai_chat", "gpt-5.6-sol", ""), "azure");
+        assert_eq!(infer_vendor("google_stt", "chirp_3", ""), "google");
+        assert_eq!(
+            infer_vendor("whisper_local", "faster-whisper-tiny", ""),
+            "local"
+        );
+    }
 
     #[test]
     fn test_normalize_lang() {

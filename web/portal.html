@@ -3,17 +3,18 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HiMarket 开发者门户</title>
+  <title>HiMarket 业务线门户（只读）</title>
   <link rel="stylesheet" href="/console.css" />
 </head>
 <body>
   <header>
-    <strong>HiMarket 开发者门户</strong>
+    <strong>绿联 AI 统一接入平台 · 业务线门户（只读 1 级）</strong>
     <span id="who">未登录</span>
     <a href="/admin">管理后台</a>
   </header>
+  <div id="alert-banner" style="margin: 10px 20px;"></div>
   <div id="login" class="card">
-    <h2>开发者登录</h2>
+    <h2>业务线账号登录（只读权限）</h2>
     <input id="username" value="ugreen_voice_dev" />
     <input id="password" type="password" value="voice123" />
     <button id="login-btn">登录</button>
@@ -21,26 +22,26 @@
   </div>
   <div id="app" hidden>
     <nav>
-      <button data-panel="square" class="active">产品广场</button>
-      <button data-panel="apps">我的应用</button>
-      <button data-panel="voice">语音接入</button>
-      <button data-panel="models">我的模型</button>
-      <button data-panel="usage">用量</button>
+      <button data-panel="usage" class="active">三维度用量报表</button>
+      <button data-panel="apps">业务线与额度（只读）</button>
+      <button data-panel="routes">当前生效路由</button>
+      <button data-panel="voice">语音会话记录</button>
+      <button data-panel="models">可用模型目录</button>
+      <button data-panel="square">产品广场</button>
     </nav>
-    <section data-panel="square"><div id="products"></div></section>
+    <section data-panel="usage">
+      <div id="usage-cards" style="display:flex; gap:12px; flex-wrap:wrap; margin:12px 0;"></div>
+      <div id="usage"></div>
+    </section>
     <section data-panel="apps" hidden>
-      <form id="consumer-form"><input name="name" placeholder="应用名称" required /><button>创建应用</button></form>
+      <p>业务线账号为只读 1 级权限。如需新签发 API Key 或调整月度额度，请联系管理员在管理后台操作。</p>
       <div id="consumers"></div>
-      <form id="key-form"><input name="consumer_id" placeholder="应用 ID" required /><button>签发 API Key</button></form>
-      <p id="new-key"></p>
       <div id="keys"></div>
     </section>
-    <section data-panel="voice" hidden>
-      <p>Android 客户端使用业务 API Key 调用 <code>POST /api/v1/voice/sessions</code>，拿到短期 LiveKit JWT 后进入房间。文本模型走 CLIProxyAPI，语音识别和合成在 Agent 内完成。</p>
-      <div id="sessions"></div>
-    </section>
+    <section data-panel="routes" hidden><div id="routes"></div></section>
+    <section data-panel="voice" hidden><div id="sessions"></div></section>
     <section data-panel="models" hidden><div id="models"></div></section>
-    <section data-panel="usage" hidden><div id="usage"></div></section>
+    <section data-panel="square" hidden><div id="products"></div></section>
   </div>
   <script src="/console.js"></script>
   <script>
@@ -52,15 +53,71 @@
         enter(session);
       } catch (error) { document.getElementById("login-error").textContent = error.message; }
     };
+    async function refreshAlerts() {
+      try {
+        const alerts = await api("/api/v1/alerts");
+        const banner = document.getElementById("alert-banner");
+        if (!alerts || !alerts.length) {
+          banner.innerHTML = "";
+          return;
+        }
+        banner.innerHTML = alerts.slice(0, 3).map(a =>
+          `<div style="padding:10px 14px; margin-bottom:6px; border-radius:8px; background:${a.level === 'CRITICAL_100' ? '#fee2e2' : '#fef3c7'}; color:${a.level === 'CRITICAL_100' ? '#991b1b' : '#92400e'}; font-weight:600;">
+            [${a.level}] ${a.message}
+          </div>`
+        ).join("");
+      } catch (_) {}
+    }
     function enter(session) {
-      login.hidden = true; app.hidden = false; who.textContent = session.username + " / " + session.subject_id;
-      load("square");
+      login.hidden = true; app.hidden = false; who.textContent = session.username + " / " + session.subject_id + " (只读)";
+      refreshAlerts();
+      load("usage");
     }
     async function load(panel) {
-      if (panel === "square") products.innerHTML = table([["名称", r => r.name], ["类型", r => r.product_type], ["说明", r => r.description || ""], ["状态", r => r.status]], await api("/api/v1/products"));
+      await refreshAlerts();
+      if (panel === "usage") {
+        const rep = await api("/api/v1/usage/report");
+        document.getElementById("usage-cards").innerHTML = [
+          ["总调用次数", rep.total_calls],
+          ["成功 / 失败", `${rep.total_success} / ${rep.total_failed} (${rep.success_rate}%)`],
+          ["LLM 总 Token 数", rep.total_tokens],
+          ["ASR/TTS 音频总时长", `${Number(rep.total_audio_seconds || 0).toFixed(2)} 秒`],
+          ["平均延迟", `${rep.avg_latency_ms || 0} ms`]
+        ].map(([k, v]) => `<div class="card" style="min-width:150px; padding:10px 14px;"><div style="font-size:12px; color:#666;">${k}</div><div style="font-size:18px; font-weight:700; margin-top:4px;">${v}</div></div>`).join("");
+
+        usage.innerHTML = table([
+          ["日期", r => r.stat_date],
+          ["业务线", r => `${r.consumer_name} (${r.api_key_id})`],
+          ["能力", r => r.category],
+          ["供应商", r => `<strong>${r.vendor}</strong>`],
+          ["模型", r => `<code>${r.model}</code>`],
+          ["调用次数", r => r.call_count],
+          ["成功/失败", r => `${r.success_count}/${r.failure_count}`],
+          ["LLM Token数", r => r.total_tokens],
+          ["音频时长(秒)", r => Number(r.audio_seconds || 0).toFixed(2)],
+          ["平均延迟(ms)", r => r.avg_latency_ms]
+        ], rep.rows || []);
+      }
       if (panel === "apps") {
         consumers.innerHTML = table([["应用 ID", r => r.consumer_id], ["名称", r => r.name]], await api("/api/v1/consumers"));
-        keys.innerHTML = table([["Key ID", r => r.api_key_id], ["应用", r => r.consumer_id], ["状态", r => r.status], ["已用微美元", r => r.quota_used_usd_micros]], await api("/api/v1/api-keys"));
+        keys.innerHTML = table([
+          ["Key ID", r => r.api_key_id],
+          ["应用", r => r.consumer_id],
+          ["状态", r => r.status],
+          ["调用次数 (已用/上限)", r => `${r.quota_used_calls || 0} / ${r.quota_limit_calls != null ? r.quota_limit_calls : "不限"}`],
+          ["Token (已用/上限)", r => `${r.quota_used_tokens || 0} / ${r.quota_limit_tokens != null ? r.quota_limit_tokens : "不限"}`],
+          ["已用微美元", r => r.quota_used_usd_micros]
+        ], await api("/api/v1/api-keys"));
+      }
+      if (panel === "routes") {
+        routes.innerHTML = table([
+          ["能力", r => r.capability],
+          ["语种", r => r.language],
+          ["当前供应商", r => r.vendor],
+          ["模型", r => r.model],
+          ["协议", r => r.protocol],
+          ["状态", r => r.status]
+        ], await api("/api/v1/routes"));
       }
       if (panel === "voice") sessions.innerHTML = table([
         ["会话", r => r.session_id],
@@ -71,11 +128,9 @@
         ["标题", r => r.title || ""],
         ["模型", r => r.llm_model || ""]
       ], await api("/api/v1/voice/sessions"));
-      if (panel === "models") models.innerHTML = table([["名称", r => r.name], ["类型", r => r.kind], ["模型", r => r.model], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status]], await api("/api/v1/model-configs"));
-      if (panel === "usage") usage.innerHTML = "<pre>" + JSON.stringify(await api("/api/v1/usage/summary"), null, 2) + "</pre>";
+      if (panel === "models") models.innerHTML = table([["供应商", r => r.vendor || ""], ["名称", r => r.name], ["类型", r => r.kind], ["模型", r => r.model], ["默认", r => r.is_default ? "是" : ""], ["状态", r => r.status]], await api("/api/v1/model-configs"));
+      if (panel === "square") products.innerHTML = table([["名称", r => r.name], ["类型", r => r.product_type], ["说明", r => r.description || ""], ["状态", r => r.status]], await api("/api/v1/products"));
     }
-    document.getElementById("consumer-form").onsubmit = async (event) => { event.preventDefault(); await api("/api/v1/consumers", { method: "POST", body: JSON.stringify({ name: event.target.name.value }) }); load("apps"); };
-    document.getElementById("key-form").onsubmit = async (event) => { event.preventDefault(); const created = await api("/api/v1/api-keys", { method: "POST", body: JSON.stringify({ consumer_id: event.target.consumer_id.value }) }); document.getElementById("new-key").textContent = "新密钥只显示一次：" + created.raw_key; load("apps"); };
     if (localStorage.getItem(tokenKey)) api("/api/v1/auth/me").then(enter).catch(() => localStorage.removeItem(tokenKey));
   </script>
 </body>
